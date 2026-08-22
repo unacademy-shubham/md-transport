@@ -25,30 +25,21 @@ export default function Login({ onLoginSuccess }) {
     <div className="relative min-h-screen w-full flex flex-col justify-between items-center bg-[#050505] overflow-hidden font-sans select-none">
 
       {/* =========================================
-          CINEMATIC LOCAL TRUCK BACKGROUND
+          CINEMATIC LOCAL TRUCK BACKGROUND (BRIGHT & CRISP)
       ========================================== */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
         style={{
           backgroundImage: `url('/bg-truck.png')`,
-          filter: 'blur(2px) brightness(0.45)',
+          filter: 'brightness(0.95) contrast(1.05)',
         }}
       />
 
-      {/* Cinematic Dark Overlay */}
-      <div className="absolute inset-0 bg-black/35 pointer-events-none" />
+      {/* Light Clean Overlay */}
+      <div className="absolute inset-0 bg-black/20 pointer-events-none" />
 
-      {/* Left/Right cinematic vignette */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background:
-            'radial-gradient(circle at center, transparent 15%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.85) 100%)',
-        }}
-      />
-
-      {/* Bottom cinematic shadow */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-black/50 pointer-events-none" />
+      {/* Bottom subtle shadow for footer readability */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
 
       {/* =========================================
           TOP SPACING
