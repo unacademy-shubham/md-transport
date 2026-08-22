@@ -1,0 +1,41 @@
+export const AUTH_USERS = [
+  { email: 'director@mdtransport.com', password: '123', name: 'Mukesh Dave', role: 'DIRECTOR', site: 'ALL', branch: 'Ahmedabad HO' },
+  { email: 'accounts@mdtransport.com', password: '123', name: 'Praveen Jain', role: 'HO_ACCOUNTS', site: 'ALL', branch: 'Ahmedabad HO' },
+  { email: 'ops@mdtransport.com', password: '123', name: 'Rajiv Sharma', role: 'HO_OPS', site: 'ALL', branch: 'Ahmedabad HO' },
+  { email: 'dhar@mdtransport.com', password: '123', name: 'Anil Verma', role: 'SITE_EXEC', site: 'DHAR', branch: 'Dhar Plant (MP)' },
+  { email: 'banswara@mdtransport.com', password: '123', name: 'Kishan Meena', role: 'SITE_EXEC', site: 'BANSWARA', branch: 'Banswara Plant (RJ)' },
+  { email: 'dhule@mdtransport.com', password: '123', name: 'Sanjay Patil', role: 'SITE_EXEC', site: 'DHULE', branch: 'Dhule Plant (MH)' },
+];
+
+export const INITIAL_TRIPS = [
+  {
+    id: 'LR-DHR-8801',
+    site: 'DHAR',
+    plantName: 'UltraTech Dhar Works',
+    destination: 'Indore Depot, MP',
+    vehicleNo: 'MP-09-HH-4412',
+    driver: 'Rameshwar Gurjar',
+    cementType: 'OPC 53 (Bagged)',
+    weightTons: 38.5,
+    advanceCash: 4500,
+    dieselLiters: 140,
+    freightTotal: 34650,
+    status: 'In-Transit',
+    invoiceNo: 'UT-DHR-24-909',
+  },
+  {
+    id: 'LR-BSW-4102',
+    site: 'BANSWARA',
+    plantName: 'UltraTech Banswara Unit',
+    destination: 'Udaipur RMC Plant, RJ',
+    vehicleNo: 'RJ-03-GA-1109',
+    driver: 'Kailash Meena',
+    cementType: 'PPC (Loose / Bulker)',
+    weightTons: 42.0,
+    advanceCash: 3000,
+    dieselLiters: 120,
+    freightTotal: 29400,
+    status: 'In-Transit',
+    invoiceNo: 'UT-BSW-24-118',
+  },
+];
