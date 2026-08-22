@@ -1,200 +1,237 @@
-import React, { useState, useEffect } from 'react';
-import { supabase } from './supabaseClient';
+import React, { useState } from 'react';
 import { 
+  Building2, 
   Truck, 
-  MapPin, 
-  ShieldCheck, 
   FileSpreadsheet, 
-  DollarSign, 
   Fuel, 
+  ShieldCheck, 
+  Users, 
+  TrendingUp, 
   PlusCircle, 
   Search, 
-  LogOut, 
-  Mail, 
-  Lock, 
-  ArrowRight,
+  MapPin, 
+  CheckCircle2, 
   AlertTriangle,
+  Clock,
+  ArrowRight,
+  LogOut,
+  DollarSign,
+  Lock,
+  Mail,
   UserCheck
 } from 'lucide-react';
 
-export default function App() {
-  const [session, setSession] = useState(null);
-  const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+// Hardcoded Master Users for Instant Demo
+const AUTH_USERS = [
+  { email: 'director@mdtransport.com', password: '123', name: 'Mukesh Dave (Director)', role: 'DIRECTOR', site: 'ALL', branch: 'Ahmedabad HO' },
+  { email: 'ops@mdtransport.com', password: '123', name: 'Rajiv Sharma (Ops Head)', role: 'HO_OPS', site: 'ALL', branch: 'Ahmedabad HO' },
+  { email: 'accounts@mdtransport.com', password: '123', name: 'Praveen Jain (Chief Acc)', role: 'HO_ACCOUNTS', site: 'ALL', branch: 'Ahmedabad HO' },
+  { email: 'dhar@mdtransport.com', password: '123', name: 'Anil Verma (Plant Incharge)', role: 'SITE_EXEC', site: 'DHAR', branch: 'Dhar Plant (MP)' },
+  { email: 'banswara@mdtransport.com', password: '123', name: 'Kishan Meena (Plant Incharge)', role: 'SITE_EXEC', site: 'BANSWARA', branch: 'Banswara Plant (RJ)' },
+  { email: 'dhule@mdtransport.com', password: '123', name: 'Sanjay Patil (Plant Incharge)', role: 'SITE_EXEC', site: 'DHULE', branch: 'Dhule Plant (MH)' },
+];
 
-  // Form & App States
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [trips, setTrips] = useState([]);
-  const [siteFilter, setSiteFilter] = useState('ALL');
+const INITIAL_TRIPS = [
+  {
+    id: 'LR-DHR-8801',
+    site: 'DHAR',
+    plantName: 'UltraTech Dhar Works',
+    destination: 'Indore Depot, MP',
+    vehicleNo: 'MP-09-HH-4412',
+    driver: 'Rameshwar Gurjar',
+    cementType: 'OPC 53 (Bagged)',
+    weightTons: 38.5,
+    advanceCash: 4500,
+    dieselLiters: 140,
+    freightTotal: 34650,
+    status: 'In-Transit',
+    invoiceNo: 'UT-DHR-24-909',
+    loadedAt: 'Today, 06:30 AM',
+  },
+  {
+    id: 'LR-BSW-4102',
+    site: 'BANSWARA',
+    plantName: 'UltraTech Banswara Unit',
+    destination: 'Udaipur RMC Plant, RJ',
+    vehicleNo: 'RJ-03-GA-1109',
+    driver: 'Kailash Meena',
+    cementType: 'PPC (Loose / Bulker)',
+    weightTons: 42.0,
+    advanceCash: 3000,
+    dieselLiters: 120,
+    freightTotal: 29400,
+    status: 'In-Transit',
+    invoiceNo: 'UT-BSW-24-118',
+    loadedAt: 'Today, 08:15 AM',
+  },
+  {
+    id: 'LR-DHL-2091',
+    site: 'DHULE',
+    plantName: 'UltraTech Dhule Grinding Unit',
+    destination: 'Nashik Warehouse, MH',
+    vehicleNo: 'MH-18-BQ-7740',
+    driver: 'Sanjay Patil',
+    cementType: 'Super Cement (Bagged)',
+    weightTons: 35.0,
+    advanceCash: 5000,
+    dieselLiters: 160,
+    freightTotal: 38500,
+    status: 'Loaded - In Plant',
+    invoiceNo: 'UT-DHL-24-554',
+    loadedAt: 'Today, 10:45 AM',
+  },
+  {
+    id: 'LR-DHR-8798',
+    site: 'DHAR',
+    plantName: 'UltraTech Dhar Works',
+    destination: 'Bhopal Project Site, MP',
+    vehicleNo: 'MP-11-AB-9811',
+    driver: 'Vikram Yadav',
+    cementType: 'Weather Pro (Bagged)',
+    weightTons: 40.0,
+    advanceCash: 6000,
+    dieselLiters: 190,
+    freightTotal: 48000,
+    status: 'Delivered',
+    invoiceNo: 'UT-DHR-24-890',
+    loadedAt: 'Yesterday',
+  },
+];
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [emailInput, setEmailInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  const [trips, setTrips] = useState(INITIAL_TRIPS);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSiteFilter, setSelectedSiteFilter] = useState('ALL');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // New LR Form State
   const [newLR, setNewLR] = useState({
     site: 'DHAR',
-    invoice_no: '',
-    vehicle_no: '',
-    driver_name: '',
-    cement_grade: 'OPC 53 (Bagged)',
-    weight_tons: '',
+    invoiceNo: '',
     destination: '',
-    advance_cash: '',
-    diesel_liters: '',
-    freight_total: ''
+    vehicleNo: '',
+    driver: '',
+    cementType: 'OPC 53 (Bagged)',
+    weightTons: '',
+    advanceCash: '',
+    dieselLiters: '',
+    freightTotal: '',
   });
 
-  // Check user session on load
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session) fetchUserProfile(session.user.id);
-      else setLoading(false);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) fetchUserProfile(session.user.id);
-      else {
-        setProfile(null);
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchUserProfile = async (userId) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (!error && data) {
-      setProfile(data);
-      setSiteFilter(data.site);
-    }
-    fetchDispatches();
-    setLoading(false);
-  };
-
-  const fetchDispatches = async () => {
-    const { data, error } = await supabase
-      .from('lr_dispatches')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (!error && data) setTrips(data);
-  };
-
-  const handleLogin = async (e) => {
+  const handleLoginSubmit = (e) => {
     e.preventDefault();
-    setAuthError('');
-    setLoading(true);
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password: password
-    });
-
-    if (error) {
-      setAuthError(error.message);
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  const handleCreateLR = async (e) => {
-    e.preventDefault();
-    const siteToUse = profile.role === 'SITE_EXEC' ? profile.site : newLR.site;
-    const sitePrefix = siteToUse === 'DHAR' ? 'DHR' : siteToUse === 'BANSWARA' ? 'BSW' : 'DHL';
-    const lrNumber = `LR-${sitePrefix}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-    const { error } = await supabase.from('lr_dispatches').insert([{
-      lr_number: lrNumber,
-      invoice_no: newLR.invoice_no,
-      site: siteToUse,
-      vehicle_no: newLR.vehicle_no.toUpperCase(),
-      driver_name: newLR.driver_name,
-      cement_grade: newLR.cement_grade,
-      weight_tons: parseFloat(newLR.weight_tons) || 0,
-      destination: newLR.destination,
-      advance_cash: parseInt(newLR.advance_cash) || 0,
-      diesel_liters: parseInt(newLR.diesel_liters) || 0,
-      freight_total: parseInt(newLR.freight_total) || 0,
-      created_by: session.user.id
-    }]);
-
-    if (!error) {
-      setIsModalOpen(false);
-      fetchDispatches();
-      setNewLR({
-        site: profile.role === 'SITE_EXEC' ? profile.site : 'DHAR',
-        invoice_no: '',
-        vehicle_no: '',
-        driver_name: '',
-        cement_grade: 'OPC 53 (Bagged)',
-        weight_tons: '',
-        destination: '',
-        advance_cash: '',
-        diesel_liters: '',
-        freight_total: ''
-      });
-    } else {
-      alert('Error creating LR: ' + error.message);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-300 font-mono text-sm">
-        Connecting to MD Transport Secure Cloud...
-      </div>
+    const user = AUTH_USERS.find(
+      u => u.email.trim().toLowerCase() === emailInput.trim().toLowerCase() && u.password === passwordInput.trim()
     );
-  }
+    if (user) {
+      setCurrentUser(user);
+      setSelectedSiteFilter(user.site);
+      setLoginError('');
+      if (user.role === 'SITE_EXEC') {
+        setNewLR(prev => ({ ...prev, site: user.site }));
+      }
+    } else {
+      setLoginError('Invalid Email or Password! (Password is: 123)');
+    }
+  };
 
-  // 1. REAL LOGIN VIEW
-  if (!session || !profile) {
+  const handleQuickLogin = (email) => {
+    const user = AUTH_USERS.find(u => u.email === email);
+    if (user) {
+      setCurrentUser(user);
+      setSelectedSiteFilter(user.site);
+      setLoginError('');
+      if (user.role === 'SITE_EXEC') {
+        setNewLR(prev => ({ ...prev, site: user.site }));
+      }
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setEmailInput('');
+    setPasswordInput('');
+  };
+
+  const handleCreateLR = (e) => {
+    e.preventDefault();
+    const siteToUse = currentUser.role === 'SITE_EXEC' ? currentUser.site : newLR.site;
+    const sitePrefix = siteToUse === 'DHAR' ? 'DHR' : siteToUse === 'BANSWARA' ? 'BSW' : 'DHL';
+    
+    const entry = {
+      id: `LR-${sitePrefix}-${Math.floor(1000 + Math.random() * 9000)}`,
+      site: siteToUse,
+      plantName: `UltraTech ${siteToUse} Unit`,
+      invoiceNo: newLR.invoiceNo,
+      destination: newLR.destination,
+      vehicleNo: newLR.vehicleNo.toUpperCase(),
+      driver: newLR.driver,
+      cementType: newLR.cementType,
+      weightTons: parseFloat(newLR.weightTons) || 0,
+      advanceCash: parseInt(newLR.advanceCash) || 0,
+      dieselLiters: parseInt(newLR.dieselLiters) || 0,
+      freightTotal: parseInt(newLR.freightTotal) || 0,
+      status: 'Loaded - In Plant',
+      loadedAt: 'Just Now',
+    };
+
+    setTrips([entry, ...trips]);
+    setIsModalOpen(false);
+    setNewLR({
+      site: currentUser.role === 'SITE_EXEC' ? currentUser.site : 'DHAR',
+      invoiceNo: '',
+      destination: '',
+      vehicleNo: '',
+      driver: '',
+      cementType: 'OPC 53 (Bagged)',
+      weightTons: '',
+      advanceCash: '',
+      dieselLiters: '',
+      freightTotal: '',
+    });
+  };
+
+  // 1. LOGIN SCREEN
+  if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4 font-sans">
         <div className="w-full max-w-md space-y-6">
           <div className="text-center space-y-2">
-            <div className="inline-flex items-center justify-center p-3 bg-amber-500 rounded-2xl text-slate-950 font-black shadow-lg shadow-amber-500/20">
+            <div className="inline-flex items-center justify-center p-3 bg-amber-500 rounded-2xl text-slate-950 font-black text-xl shadow-lg shadow-amber-500/20">
               <Truck className="w-8 h-8" />
             </div>
-            <h1 className="text-2xl font-bold text-slate-100">MD Transport Workstation</h1>
-            <p className="text-xs text-slate-400">UltraTech Fleet Management Portal</p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-100">MD Transport Portal</h1>
+            <p className="text-xs text-slate-400">UltraTech Cement Dedicated Fleet</p>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-5">
             <div>
-              <h2 className="text-sm font-semibold text-slate-200">Authorized Personnel Sign In</h2>
-              <p className="text-xs text-slate-500">Access protected by Row-Level Cloud Security</p>
+              <h2 className="text-base font-semibold text-slate-200">Sign in to your account</h2>
+              <p className="text-xs text-slate-400 mt-0.5">Enter credentials or use 1-click login below</p>
             </div>
 
-            {authError && (
+            {loginError && (
               <div className="p-3 rounded-lg bg-rose-950/60 border border-rose-800 text-rose-300 text-xs flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
-                <span>{authError}</span>
+                <span>{loginError}</span>
               </div>
             )}
 
-            <form onSubmit={handleLogin} className="space-y-4 text-xs">
+            <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="text-slate-300 font-semibold block mb-1">Company Email</label>
+                <label className="text-slate-300 font-semibold block mb-1">Work Email</label>
                 <div className="relative">
                   <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="email"
                     required
-                    placeholder="user@mdtransport.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@mdtransport.com"
+                    value={emailInput}
+                    onChange={(e) => setEmailInput(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2.5 text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -207,9 +244,9 @@ export default function App() {
                   <input
                     type="password"
                     required
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password (123)"
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-2.5 text-slate-200 focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -217,63 +254,110 @@ export default function App() {
 
               <button
                 type="submit"
-                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-xs transition flex items-center justify-center gap-2"
               >
                 Sign In
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
+
+            <div className="pt-4 border-t border-slate-800 space-y-2.5">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Demo: 1-Click Role Login</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('director@mdtransport.com')}
+                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition"
+                >
+                  <p className="text-xs font-semibold text-purple-300">Director / Owner</p>
+                  <p className="text-[10px] text-slate-500">Ahmedabad HQ (Full)</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('accounts@mdtransport.com')}
+                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition"
+                >
+                  <p className="text-xs font-semibold text-emerald-300">HO Accounts</p>
+                  <p className="text-[10px] text-slate-500">Billing & Fuel Ledger</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('ops@mdtransport.com')}
+                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition"
+                >
+                  <p className="text-xs font-semibold text-blue-300">HO Operations</p>
+                  <p className="text-[10px] text-slate-500">400 Fleet Tracking</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleQuickLogin('dhar@mdtransport.com')}
+                  className="p-2 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-left transition"
+                >
+                  <p className="text-xs font-semibold text-amber-300">Site Incharge</p>
+                  <p className="text-[10px] text-slate-500">Dhar Plant (LR Entry)</p>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  // 2. AUTHENTICATED REAL-TIME WORKSPACE
+  // 2. DASHBOARD VIEW
   const visibleTrips = trips.filter(t => {
-    if (profile.role === 'SITE_EXEC') {
-      if (t.site !== profile.site) return false;
+    if (currentUser.role === 'SITE_EXEC') {
+      if (t.site !== currentUser.site) return false;
     } else {
-      if (siteFilter !== 'ALL' && t.site !== siteFilter) return false;
+      if (selectedSiteFilter !== 'ALL' && t.site !== selectedSiteFilter) return false;
     }
 
     return (
-      t.lr_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.vehicle_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.driver_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.vehicleNo.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      t.driver.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      t.invoice_no.toLowerCase().includes(searchQuery.toLowerCase())
+      t.invoiceNo.toLowerCase().includes(searchQuery.toLowerCase())
     );
   });
 
+  const totalLoadedMT = visibleTrips.reduce((sum, item) => sum + item.weightTons, 0);
+  const totalFreightRevenue = visibleTrips.reduce((sum, item) => sum + item.freightTotal, 0);
+  const totalAdvancesIssued = visibleTrips.reduce((sum, item) => sum + item.advanceCash, 0);
+  const totalDieselIssued = visibleTrips.reduce((sum, item) => sum + item.dieselLiters, 0);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-      {/* Top Bar */}
-      <header className="border-b border-slate-800 bg-slate-900 sticky top-0 z-30 px-6 py-3">
+      <header className="border-b border-slate-800 bg-slate-900 sticky top-0 z-30 px-6 py-3 shadow-md">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-500 rounded-xl text-slate-950 font-black">
+            <div className="p-2 bg-amber-500 rounded-xl text-slate-950 font-black tracking-wider flex items-center gap-1">
               <Truck className="w-5 h-5" />
+              <span>MDT</span>
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-bold text-base text-slate-100">MD Transport</h1>
-                <span className="text-[10px] bg-slate-800 text-amber-400 font-bold px-2 py-0.5 rounded border border-amber-500/30">
-                  {profile.branch_name}
+                <h1 className="font-bold text-base text-slate-100">MD Transport Management</h1>
+                <span className="text-[10px] bg-slate-800 text-amber-400 font-bold px-2 py-0.5 rounded border border-amber-500/30 uppercase">
+                  {currentUser.branch}
                 </span>
               </div>
-              <p className="text-xs text-slate-400">UltraTech Fleet Management</p>
+              <p className="text-xs text-slate-400">UltraTech Logistics • ~400 Fleet</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-            {profile.role !== 'SITE_EXEC' && (
+            {currentUser.role !== 'SITE_EXEC' && (
               <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
                 <MapPin className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs text-slate-400 font-medium">Plant:</span>
                 <select 
-                  value={siteFilter} 
-                  onChange={(e) => setSiteFilter(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-slate-200 focus:outline-none"
+                  value={selectedSiteFilter} 
+                  onChange={(e) => setSelectedSiteFilter(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-slate-200 focus:outline-none cursor-pointer"
                 >
                   <option value="ALL" className="bg-slate-900">All Sites</option>
                   <option value="DHAR" className="bg-slate-900">Dhar Plant (MP)</option>
@@ -285,15 +369,16 @@ export default function App() {
 
             <div className="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
               <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <div>
-                <p className="text-xs font-bold text-slate-200 leading-none">{profile.full_name}</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">{profile.role}</p>
+              <div className="text-left">
+                <p className="text-xs font-bold text-slate-200 leading-none">{currentUser.name}</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">{currentUser.role.replace('_', ' ')}</p>
               </div>
             </div>
 
             <button
               onClick={handleLogout}
               className="p-2 rounded-lg bg-slate-800 hover:bg-rose-900/50 hover:text-rose-300 text-slate-400 border border-slate-700 transition"
+              title="Sign Out"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -301,15 +386,109 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Workspace */}
       <div className="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
-        {/* Action Controls */}
+        {/* Metric Tiles */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Total Active Dispatches</p>
+                <h3 className="text-2xl font-bold text-slate-100 mt-1">{visibleTrips.length} Loads</h3>
+                <p className="text-xs text-amber-400 mt-1">
+                  {currentUser.role === 'SITE_EXEC' ? `${currentUser.site} Plant` : `Filter: ${selectedSiteFilter}`}
+                </p>
+              </div>
+              <div className="p-2 bg-slate-800 rounded-lg text-amber-400">
+                <Truck className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <div className="flex justify-between items-start">
+              <div>
+                <p className="text-xs font-medium text-slate-400">Cement Dispatched</p>
+                <h3 className="text-2xl font-bold text-slate-100 mt-1">{totalLoadedMT.toFixed(1)} MT</h3>
+                <p className="text-xs text-slate-500 mt-1">UltraTech OPC / PPC</p>
+              </div>
+              <div className="p-2 bg-slate-800 rounded-lg text-indigo-400">
+                <FileSpreadsheet className="w-5 h-5" />
+              </div>
+            </div>
+          </div>
+
+          {(currentUser.role === 'DIRECTOR' || currentUser.role === 'HO_ACCOUNTS') ? (
+            <>
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs font-medium text-slate-400">Total Freight Billed</p>
+                    <h3 className="text-2xl font-bold text-emerald-400 mt-1">
+                      ₹{totalFreightRevenue.toLocaleString('en-IN')}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">UltraTech Billing</p>
+                  </div>
+                  <div className="p-2 bg-slate-800 rounded-lg text-emerald-400">
+                    <DollarSign className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs font-medium text-slate-400">Advances & Diesel Issued</p>
+                    <h3 className="text-2xl font-bold text-rose-400 mt-1">
+                      ₹{totalAdvancesIssued.toLocaleString('en-IN')}
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">Diesel: {totalDieselIssued} L</p>
+                  </div>
+                  <div className="p-2 bg-slate-800 rounded-lg text-rose-400">
+                    <Fuel className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs font-medium text-slate-400">Site Diesel Issued</p>
+                    <h3 className="text-2xl font-bold text-cyan-400 mt-1">{totalDieselIssued} Liters</h3>
+                    <p className="text-xs text-slate-500 mt-1">Fuel Slip Issued</p>
+                  </div>
+                  <div className="p-2 bg-slate-800 rounded-lg text-cyan-400">
+                    <Fuel className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-xs font-medium text-slate-400">En-Route Status</p>
+                    <h3 className="text-2xl font-bold text-emerald-400 mt-1">
+                      {visibleTrips.filter(t => t.status === 'In-Transit').length} Trucks
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">Live In Transit</p>
+                  </div>
+                  <div className="p-2 bg-slate-800 rounded-lg text-emerald-400">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Action Header */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:w-80">
             <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search LR No, Vehicle, Driver..."
+              placeholder="Search LR No, Truck, Driver..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-900 border border-slate-800 rounded-lg pl-9 pr-4 py-2 text-xs text-slate-200 focus:outline-none focus:border-amber-500"
@@ -321,16 +500,18 @@ export default function App() {
             className="w-full sm:w-auto flex items-center justify-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-lg text-xs transition shadow-md"
           >
             <PlusCircle className="w-4 h-4" />
-            Create UltraTech LR
+            {currentUser.role === 'SITE_EXEC' ? `Create LR (${currentUser.site})` : 'Create UltraTech LR'}
           </button>
         </div>
 
-        {/* Real-time Cloud Table */}
+        {/* LR Table */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-          <div className="p-4 border-b border-slate-800 flex justify-between items-center">
+          <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/60">
             <div>
-              <h2 className="text-sm font-bold text-slate-200">Cloud Dispatch Register (Live Database)</h2>
-              <p className="text-xs text-slate-400">Syncing live entries from Dhar, Banswara & Dhule</p>
+              <h2 className="text-sm font-bold text-slate-200">UltraTech Plant Dispatch Register</h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {currentUser.role === 'SITE_EXEC' ? `Records for ${currentUser.site} Plant` : 'Consolidated Plant Records'}
+              </p>
             </div>
             <span className="text-xs bg-slate-800 text-slate-300 font-mono px-2.5 py-1 rounded-md">
               {visibleTrips.length} Entries
@@ -342,11 +523,11 @@ export default function App() {
               <thead className="bg-slate-950/80 text-slate-400 font-semibold border-b border-slate-800">
                 <tr>
                   <th className="p-3.5">LR Details</th>
-                  <th className="p-3.5">Site</th>
+                  <th className="p-3.5">Plant Site</th>
                   <th className="p-3.5">Truck & Driver</th>
                   <th className="p-3.5">Destination & Cargo</th>
-                  <th className="p-3.5">Weight (MT)</th>
-                  {(profile.role === 'DIRECTOR' || profile.role === 'HO_ACCOUNTS') && (
+                  <th className="p-3.5">Tonnage / Diesel</th>
+                  {(currentUser.role === 'DIRECTOR' || currentUser.role === 'HO_ACCOUNTS') && (
                     <th className="p-3.5">Freight & Advance</th>
                   )}
                   <th className="p-3.5">Status</th>
@@ -356,23 +537,26 @@ export default function App() {
                 {visibleTrips.map((trip) => (
                   <tr key={trip.id} className="hover:bg-slate-800/30 transition">
                     <td className="p-3.5">
-                      <p className="font-mono font-bold text-amber-400">{trip.lr_number}</p>
-                      <p className="text-[11px] text-slate-500 font-mono">Inv: {trip.invoice_no}</p>
+                      <p className="font-mono font-bold text-amber-400">{trip.id}</p>
+                      <p className="text-[11px] text-slate-500 font-mono">Inv: {trip.invoiceNo}</p>
                     </td>
                     <td className="p-3.5 font-bold text-slate-300">{trip.site}</td>
                     <td className="p-3.5">
-                      <p className="font-mono font-bold text-slate-200">{trip.vehicle_no}</p>
-                      <p className="text-slate-400 text-[11px]">{trip.driver_name}</p>
+                      <p className="font-mono font-bold text-slate-200">{trip.vehicleNo}</p>
+                      <p className="text-slate-400 text-[11px]">{trip.driver}</p>
                     </td>
                     <td className="p-3.5">
-                      <p className="text-slate-200">{trip.destination}</p>
-                      <p className="text-[11px] text-amber-400/80">{trip.cement_grade}</p>
+                      <div className="flex items-center gap-1 text-slate-200">
+                        <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                        <span>{trip.destination}</span>
+                      </div>
+                      <p className="text-[11px] text-amber-400/80 mt-0.5">{trip.cementType}</p>
                     </td>
-                    <td className="p-3.5 font-bold text-slate-100">{trip.weight_tons} MT</td>
-                    {(profile.role === 'DIRECTOR' || profile.role === 'HO_ACCOUNTS') && (
+                    <td className="p-3.5 font-bold text-slate-100">{trip.weightTons} MT</td>
+                    {(currentUser.role === 'DIRECTOR' || currentUser.role === 'HO_ACCOUNTS') && (
                       <td className="p-3.5">
-                        <p className="font-semibold text-emerald-400">₹{trip.freight_total.toLocaleString('en-IN')}</p>
-                        <p className="text-[11px] text-rose-400">Adv: ₹{trip.advance_cash.toLocaleString('en-IN')}</p>
+                        <p className="font-semibold text-emerald-400">₹{trip.freightTotal.toLocaleString('en-IN')}</p>
+                        <p className="text-[11px] text-rose-400">Adv: ₹{trip.advanceCash.toLocaleString('en-IN')}</p>
                       </td>
                     )}
                     <td className="p-3.5">
@@ -388,12 +572,12 @@ export default function App() {
         </div>
       </div>
 
-      {/* Modal: New LR Creation Form */}
+      {/* Modal Form */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-xl p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-base text-slate-100">Create Live Plant LR (Cloud Save)</h3>
+              <h3 className="font-bold text-base text-slate-100">Create UltraTech Plant LR (Bilty)</h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">✕</button>
             </div>
 
@@ -402,8 +586,8 @@ export default function App() {
                 <div>
                   <label className="text-slate-400 font-semibold">Dispatch Site</label>
                   <select
-                    disabled={profile.role === 'SITE_EXEC'}
-                    value={profile.role === 'SITE_EXEC' ? profile.site : newLR.site}
+                    disabled={currentUser.role === 'SITE_EXEC'}
+                    value={currentUser.role === 'SITE_EXEC' ? currentUser.site : newLR.site}
                     onChange={(e) => setNewLR({...newLR, site: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
                   >
@@ -419,9 +603,9 @@ export default function App() {
                     required
                     type="text"
                     placeholder="UT-24-XXXX"
-                    value={newLR.invoice_no}
-                    onChange={(e) => setNewLR({...newLR, invoice_no: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
+                    value={newLR.invoiceNo}
+                    onChange={(e) => setNewLR({...newLR, invoiceNo: e.target.value})}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200 font-mono"
                   />
                 </div>
               </div>
@@ -433,9 +617,9 @@ export default function App() {
                     required
                     type="text"
                     placeholder="MP-09-AB-1234"
-                    value={newLR.vehicle_no}
-                    onChange={(e) => setNewLR({...newLR, vehicle_no: e.target.value})}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200 uppercase"
+                    value={newLR.vehicleNo}
+                    onChange={(e) => setNewLR({...newLR, vehicleNo: e.target.value})}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200 font-mono uppercase"
                   />
                 </div>
                 <div>
@@ -444,8 +628,8 @@ export default function App() {
                     required
                     type="text"
                     placeholder="Driver Name"
-                    value={newLR.driver_name}
-                    onChange={(e) => setNewLR({...newLR, driver_name: e.target.value})}
+                    value={newLR.driver}
+                    onChange={(e) => setNewLR({...newLR, driver: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
                   />
                 </div>
@@ -455,8 +639,8 @@ export default function App() {
                 <div>
                   <label className="text-slate-400 font-semibold">Cement Grade</label>
                   <select
-                    value={newLR.cement_grade}
-                    onChange={(e) => setNewLR({...newLR, cement_grade: e.target.value})}
+                    value={newLR.cementType}
+                    onChange={(e) => setNewLR({...newLR, cementType: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
                   >
                     <option value="OPC 53 (Bagged)">OPC 53 (Bagged)</option>
@@ -472,8 +656,8 @@ export default function App() {
                     type="number"
                     step="0.1"
                     placeholder="38.5"
-                    value={newLR.weight_tons}
-                    onChange={(e) => setNewLR({...newLR, weight_tons: e.target.value})}
+                    value={newLR.weightTons}
+                    onChange={(e) => setNewLR({...newLR, weightTons: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
                   />
                 </div>
@@ -497,8 +681,8 @@ export default function App() {
                   <input
                     type="number"
                     placeholder="4000"
-                    value={newLR.advance_cash}
-                    onChange={(e) => setNewLR({...newLR, advance_cash: e.target.value})}
+                    value={newLR.advanceCash}
+                    onChange={(e) => setNewLR({...newLR, advanceCash: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
                   />
                 </div>
@@ -507,8 +691,8 @@ export default function App() {
                   <input
                     type="number"
                     placeholder="140"
-                    value={newLR.diesel_liters}
-                    onChange={(e) => setNewLR({...newLR, diesel_liters: e.target.value})}
+                    value={newLR.dieselLiters}
+                    onChange={(e) => setNewLR({...newLR, dieselLiters: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
                   />
                 </div>
@@ -517,8 +701,8 @@ export default function App() {
                   <input
                     type="number"
                     placeholder="32000"
-                    value={newLR.freight_total}
-                    onChange={(e) => setNewLR({...newLR, freight_total: e.target.value})}
+                    value={newLR.freightTotal}
+                    onChange={(e) => setNewLR({...newLR, freightTotal: e.target.value})}
                     className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 mt-1 text-slate-200"
                   />
                 </div>
@@ -536,7 +720,7 @@ export default function App() {
                   type="submit"
                   className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold"
                 >
-                  Save to Cloud DB
+                  Save & Print LR
                 </button>
               </div>
             </form>
