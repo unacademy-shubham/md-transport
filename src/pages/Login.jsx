@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, KeyRound } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Truck } from 'lucide-react';
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState('');
@@ -25,12 +25,12 @@ export default function Login({ onLoginSuccess }) {
     <div className="relative min-h-screen w-full flex flex-col justify-between items-center bg-[#050505] overflow-hidden font-sans select-none">
 
       {/* =========================================
-          CINEMATIC TRUCK BACKGROUND
+          CINEMATIC LOCAL TRUCK BACKGROUND
       ========================================== */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
         style={{
-          backgroundImage: `url('https://images.unsplash.com/photo-1580211186716-43b9d07361de?q=90&w=2400&auto=format&fit=crop')`,
+          backgroundImage: `url('/bg-truck.png')`,
           filter: 'blur(2px) brightness(0.45)',
         }}
       />
@@ -60,13 +60,21 @@ export default function Login({ onLoginSuccess }) {
       ========================================== */}
       <div className="relative z-10 w-full max-w-[420px] px-4">
 
-        <div className="bg-white rounded-xl p-8 sm:p-10 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.9)] border border-white/20 space-y-7">
+        <div className="bg-white rounded-2xl p-8 sm:p-10 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.9)] border border-white/40 space-y-6">
 
-          {/* Header */}
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-slate-800 tracking-tight">
-              MD Transport
-            </h1>
+          {/* Header with Custom Logistics Logo */}
+          <div className="flex items-center justify-center gap-3">
+            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-[#0088e6] to-[#00b4d8] text-white flex items-center justify-center shadow-lg shadow-sky-500/25 border border-sky-300/40">
+              <Truck className="w-6 h-6 stroke-[2.2]" />
+            </div>
+            <div className="text-left">
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight leading-none">
+                MD Transport
+              </h1>
+              <p className="text-[10px] font-bold text-sky-600 tracking-wider uppercase mt-1">
+                Fleet Management Portal
+              </p>
+            </div>
           </div>
 
           {/* Error Message */}
@@ -79,25 +87,25 @@ export default function Login({ onLoginSuccess }) {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
 
-            {/* Username */}
+            {/* Username with High Visibility Border & Shadow */}
             <div>
-              <label className="text-slate-700 font-semibold block mb-1.5 pl-0.5">
-                Username
+              <label className="text-slate-700 font-bold block mb-1.5 pl-0.5">
+                Username / Email
               </label>
 
               <input
                 type="text"
                 required
-                placeholder="ABV2@test.com"
+                placeholder="Enter username or email"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-[#f4f7fb] border border-transparent rounded-lg px-4 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-4 focus:ring-sky-500/10 transition font-medium"
+                className="w-full bg-[#f8fafc] border border-slate-200 hover:border-slate-300 rounded-xl px-4 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/20 transition-all font-medium shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]"
               />
             </div>
 
-            {/* Password */}
+            {/* Password with High Visibility Border & Shadow */}
             <div>
-              <label className="text-slate-700 font-semibold block mb-1.5 pl-0.5">
+              <label className="text-slate-700 font-bold block mb-1.5 pl-0.5">
                 Password
               </label>
 
@@ -109,13 +117,13 @@ export default function Login({ onLoginSuccess }) {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#f4f7fb] border border-transparent rounded-lg pl-4 pr-11 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-4 focus:ring-sky-500/10 transition font-medium"
+                  className="w-full bg-[#f8fafc] border border-slate-200 hover:border-slate-300 rounded-xl pl-4 pr-11 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/20 transition-all font-medium shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]"
                 />
 
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                 >
                   {showPassword ? (
                     <EyeOff className="w-4 h-4" />
@@ -132,7 +140,7 @@ export default function Login({ onLoginSuccess }) {
 
               <button
                 type="submit"
-                className="w-full py-3.5 bg-[#0099ff] hover:bg-[#0088e6] text-white font-bold rounded-lg text-xs tracking-wide transition shadow-md shadow-[#0099ff]/30 active:scale-[0.98] cursor-pointer"
+                className="w-full py-3.5 bg-[#0099ff] hover:bg-[#0088e6] text-white font-bold rounded-xl text-xs tracking-wide transition shadow-lg shadow-[#0099ff]/30 active:scale-[0.98] cursor-pointer"
               >
                 Login
               </button>
