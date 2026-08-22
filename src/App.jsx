@@ -1,67 +1,27 @@
-import React from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import React, { useState } from 'react';
 import Login from './pages/Login';
-import DirectorView from './pages/DirectorView';
-import AccountsView from './pages/AccountsView';
-import OpsView from './pages/OpsView';
-import SiteView from './pages/SiteView';
-
-function ProtectedRoute({ children, allowedRoles }) {
-  const { currentUser } = useAuth();
-  if (!currentUser) return <Navigate to="/login" replace />;
-  if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
-    return <Navigate to="/unauthorized" replace />;
-  }
-  return children;
-}
 
 export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  const handleLoginSuccess = (username, password) => {
+    // Check credentials logic
+    setIsLoggedIn(true);
+  };
+
+  if (!isLoggedIn) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          
-          <Route 
-            path="/director" 
-            element={
-              <ProtectedRoute allowedRoles={['DIRECTOR']}>
-                <DirectorView />
-              </ProtectedRoute>
-            } 
-          />
-          
-          <Route 
-            path="/accounts" 
-            element={
-              <ProtectedRoute allowedRoles={['HO_ACCOUNTS', 'DIRECTOR']}>
-                <AccountsView />
-              </ProtectedRoute>
-            } 
-          />
-
-          <Route 
-            path="/operations" 
-            element={
-              <ProtectedRoute allowedRoles={['HO_OPS', 'DIRECTOR']}>
-                <OpsView />
-              </ProtectedRoute>
-            } 
-          />
-
-          <Route 
-            path="/plant" 
-            element={
-              <ProtectedRoute allowedRoles={['SITE_EXEC']}>
-                <SiteView />
-              </ProtectedRoute>
-            } 
-          />
-
-          <Route path="*" element={<Navigate to="/login" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+    <div className="p-8 text-center">
+      <h1 className="text-xl font-bold">Welcome to MD Transport Dashboard!</h1>
+      <button 
+        onClick={() => setIsLoggedIn(false)}
+        className="mt-4 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs"
+      >
+        Sign Out
+      </button>
+    </div>
   );
 }
