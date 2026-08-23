@@ -9,23 +9,18 @@ import {
   History,
   LogOut,
   Plus,
-  Search,
   Key,
-  ShieldCheck,
   ChevronDown,
   CheckCircle2,
-  XCircle,
-  Phone,
-  CreditCard,
-  MapPin,
-  RefreshCw,
-  X,
+  Trash2,
   Edit3
 } from 'lucide-react';
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
-  // Navigation State
-  const [activeMenu, setActiveMenu] = useState('dashboard'); // 'dashboard', 'sites', 'users', 'vehicles', 'drivers', 'logs'
+  // Navigation State with LocalStorage Persistence
+  const [activeMenu, setActiveMenu] = useState(() => {
+    return localStorage.getItem('md_transport_active_tab') || 'dashboard';
+  });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   // Live Data States
@@ -37,24 +32,28 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     { id: 'DRV-2', name: 'Kailash Meena', phone: '9414098765', license_no: 'RJ03-2016-1144', assigned_vehicle: 'RJ-03-GA-1109', status: 'Active' },
     { id: 'DRV-3', name: 'Sanjay Patil', phone: '9822054321', license_no: 'MH18-2019-9022', assigned_vehicle: 'MH-18-BQ-7740', status: 'Active' },
   ]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
 
   // Modal States
-  const [modalType, setModalType] = useState(null); // 'ADD_SITE', 'ADD_USER', 'ADD_VEHICLE', 'ADD_DRIVER', 'RESET_PASS', 'EDIT_PROFILE'
+  const [modalType, setModalType] = useState(null); 
+  // 'ADD_SITE', 'ADD_USER', 'EDIT_USER', 'ADD_VEHICLE', 'ADD_DRIVER', 'EDIT_DRIVER', 'RESET_PASS', 'EDIT_PROFILE'
   const [selectedUser, setSelectedUser] = useState(null);
+  const [selectedDriver, setSelectedDriver] = useState(null);
 
   // Form Inputs
   const [siteForm, setSiteForm] = useState({ name: '', code: '', state: '' });
   const [vehicleForm, setVehicleForm] = useState({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
   const [userForm, setUserForm] = useState({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
-  const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '' });
+  const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
   const [resetPassValue, setResetPassValue] = useState('');
   const [profileForm, setProfileForm] = useState({ name: currentUser.name, password: currentUser.password_hash });
 
+  const handleMenuChange = (menu) => {
+    setActiveMenu(menu);
+    localStorage.setItem('md_transport_active_tab', menu);
+  };
+
   // Fetch Live Data from Supabase
   const fetchAllData = async () => {
-    setLoading(true);
     try {
       const [sitesRes, usersRes, vehiclesRes] = await Promise.all([
         supabase.from('sites').select('*').order('created_at', { ascending: false }),
@@ -67,16 +66,26 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       if (vehiclesRes.data) setVehicles(vehiclesRes.data);
     } catch (err) {
       console.error('Error fetching Supabase data:', err);
-    } finally {
-      setLoading(false);
     }
   };
 
+  // Real-time WebSocket Listeners (Sub-second DB syncing)
   useEffect(() => {
     fetchAllData();
+
+    const channel = supabase
+      .channel('realtime_erp_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => fetchAllData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => fetchAllData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => fetchAllData())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  // 1. Handle Add Site
+  // 1. Create Site
   const handleCreateSite = async (e) => {
     e.preventDefault();
     const { error } = await supabase.from('sites').insert([{
@@ -90,11 +99,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     else {
       setSiteForm({ name: '', code: '', state: '' });
       setModalType(null);
-      fetchAllData();
     }
   };
 
-  // 2. Handle Add Vehicle
+  // 2. Create Vehicle
   const handleCreateVehicle = async (e) => {
     e.preventDefault();
     const { error } = await supabase.from('vehicles').insert([{
@@ -109,11 +117,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     else {
       setVehicleForm({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
       setModalType(null);
-      fetchAllData();
     }
   };
 
-  // 3. Handle Add User
+  // 3. Create User
   const handleCreateUser = async (e) => {
     e.preventDefault();
     const defaultPermissions = userForm.role === 'DIRECTOR'
@@ -138,15 +145,51 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     else {
       setUserForm({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
       setModalType(null);
-      fetchAllData();
     }
   };
 
-  // 4. Handle Add Driver
+  // 4. Update Existing User
+  const handleUpdateUser = async (e) => {
+    e.preventDefault();
+    if (!selectedUser) return;
+
+    const { error } = await supabase
+      .from('app_users')
+      .update({
+        name: userForm.name,
+        role: userForm.role,
+        branch: userForm.branch,
+        site_access: userForm.site_access,
+        updated_by: currentUser.name,
+        last_action_note: `Details updated by ${currentUser.name}`,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', selectedUser.id);
+
+    if (error) alert('Error updating user: ' + error.message);
+    else {
+      setModalType(null);
+      setSelectedUser(null);
+    }
+  };
+
+  // 5. Delete User
+  const handleDeleteUser = async (user) => {
+    if (user.id === currentUser.id) {
+      alert('You cannot delete your own logged-in administrator account.');
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to permanently delete user @${user.username} (${user.name})?`)) return;
+
+    const { error } = await supabase.from('app_users').delete().eq('id', user.id);
+    if (error) alert('Error deleting user: ' + error.message);
+  };
+
+  // 6. Drivers CRUD
   const handleCreateDriver = (e) => {
     e.preventDefault();
     const newDrvr = {
-      id: `DRV-${drivers.length + 1}`,
+      id: `DRV-${Date.now().toString().slice(-4)}`,
       name: driverForm.name,
       phone: driverForm.phone,
       license_no: driverForm.license_no.toUpperCase(),
@@ -154,11 +197,24 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       status: 'Active'
     };
     setDrivers([newDrvr, ...drivers]);
-    setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '' });
+    setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
     setModalType(null);
   };
 
-  // 5. Handle Reset Password with Audit
+  const handleUpdateDriver = (e) => {
+    e.preventDefault();
+    if (!selectedDriver) return;
+    setDrivers(drivers.map(d => d.id === selectedDriver.id ? { ...d, ...driverForm } : d));
+    setModalType(null);
+    setSelectedDriver(null);
+  };
+
+  const handleDeleteDriver = (driver) => {
+    if (!window.confirm(`Are you sure you want to remove driver ${driver.name}?`)) return;
+    setDrivers(drivers.filter(d => d.id !== driver.id));
+  };
+
+  // 7. Reset Password
   const handleResetPassword = async () => {
     if (!resetPassValue.trim() || !selectedUser) return;
     const { error } = await supabase
@@ -173,15 +229,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
     if (error) alert('Error resetting password: ' + error.message);
     else {
-      alert(`Password updated for user: ${selectedUser.username}`);
+      alert(`Password updated for user: @${selectedUser.username}`);
       setResetPassValue('');
       setSelectedUser(null);
       setModalType(null);
-      fetchAllData();
     }
   };
 
-  // 6. Handle Update Self Profile
+  // 8. Update Self Profile
   const handleUpdateSelfProfile = async (e) => {
     e.preventDefault();
     const { error } = await supabase
@@ -201,11 +256,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       if (onUserUpdate) onUserUpdate({ ...currentUser, name: profileForm.name, password_hash: profileForm.password });
       setModalType(null);
       setUserMenuOpen(false);
-      fetchAllData();
     }
   };
 
-  // 7. Toggle User Status
+  // 9. Toggle User Status
   const handleToggleUserStatus = async (user) => {
     const nextStatus = !user.is_active;
     const { error } = await supabase
@@ -219,7 +273,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', user.id);
 
     if (error) alert('Error: ' + error.message);
-    else fetchAllData();
   };
 
   return (
@@ -239,8 +292,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             <div>
               <h1 className="font-extrabold text-base text-slate-900 tracking-tight flex items-center gap-2">
                 MD Transport Management System
-                <span className="text-[10px] bg-sky-50 text-sky-700 font-bold px-2 py-0.5 rounded border border-sky-200">
-                  ERP v2.4
+                <span className="flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-full border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live Sync
                 </span>
               </h1>
               <p className="text-xs text-slate-400">Integrated Logistics & Multi-Site Dispatch Suite</p>
@@ -249,15 +303,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
           {/* User Profile Corner with Dropdown */}
           <div className="relative flex items-center gap-3">
-            <button
-              onClick={fetchAllData}
-              className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 transition cursor-pointer"
-              title="Refresh Data"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-sky-600' : ''}`} />
-            </button>
-
-            {/* Profile Pill */}
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -273,7 +318,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
               </button>
 
-              {/* Profile Dropdown Menu */}
               {userMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2 border-b border-slate-100">
@@ -290,7 +334,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </button>
 
                   <button
-                    onClick={() => { setActiveMenu('logs'); setUserMenuOpen(false); }}
+                    onClick={() => { handleMenuChange('logs'); setUserMenuOpen(false); }}
                     className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 font-medium cursor-pointer"
                   >
                     <History className="w-4 h-4 text-slate-400" />
@@ -329,7 +373,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
 
             <button
-              onClick={() => setActiveMenu('dashboard')}
+              onClick={() => handleMenuChange('dashboard')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeMenu === 'dashboard' ? 'bg-[#0099ff] text-white shadow-md shadow-sky-500/20' : 'text-slate-600 hover:bg-slate-100'
               }`}
@@ -339,7 +383,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </button>
 
             <button
-              onClick={() => setActiveMenu('sites')}
+              onClick={() => handleMenuChange('sites')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeMenu === 'sites' ? 'bg-[#0099ff] text-white shadow-md shadow-sky-500/20' : 'text-slate-600 hover:bg-slate-100'
               }`}
@@ -354,7 +398,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </button>
 
             <button
-              onClick={() => setActiveMenu('users')}
+              onClick={() => handleMenuChange('users')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeMenu === 'users' ? 'bg-[#0099ff] text-white shadow-md shadow-sky-500/20' : 'text-slate-600 hover:bg-slate-100'
               }`}
@@ -369,7 +413,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </button>
 
             <button
-              onClick={() => setActiveMenu('vehicles')}
+              onClick={() => handleMenuChange('vehicles')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeMenu === 'vehicles' ? 'bg-[#0099ff] text-white shadow-md shadow-sky-500/20' : 'text-slate-600 hover:bg-slate-100'
               }`}
@@ -384,7 +428,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </button>
 
             <button
-              onClick={() => setActiveMenu('drivers')}
+              onClick={() => handleMenuChange('drivers')}
               className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeMenu === 'drivers' ? 'bg-[#0099ff] text-white shadow-md shadow-sky-500/20' : 'text-slate-600 hover:bg-slate-100'
               }`}
@@ -403,7 +447,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
 
             <button
-              onClick={() => setActiveMenu('logs')}
+              onClick={() => handleMenuChange('logs')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeMenu === 'logs' ? 'bg-[#0099ff] text-white shadow-md shadow-sky-500/20' : 'text-slate-600 hover:bg-slate-100'
               }`}
@@ -414,10 +458,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
           </div>
 
-          {/* Sidebar Footer */}
           <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-center space-y-1">
             <p className="text-[11px] font-bold text-slate-700">MD Transport Suite</p>
-            <p className="text-[10px] text-slate-400">Developed by Buddy Computers</p>
+            <p className="text-[10px] text-slate-400">Real-time Architecture Active</p>
           </div>
         </aside>
 
@@ -498,7 +541,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-xs">
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-bold text-slate-900">Plant Locations</h3>
-                    <button onClick={() => setActiveMenu('sites')} className="text-xs text-sky-600 font-bold hover:underline">View All</button>
+                    <button onClick={() => handleMenuChange('sites')} className="text-xs text-sky-600 font-bold hover:underline">View All</button>
                   </div>
                   <div className="divide-y divide-slate-100">
                     {sites.slice(0, 3).map(s => (
@@ -519,7 +562,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-xs">
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-bold text-slate-900">Recent User Actions</h3>
-                    <button onClick={() => setActiveMenu('logs')} className="text-xs text-sky-600 font-bold hover:underline">View Logs</button>
+                    <button onClick={() => handleMenuChange('logs')} className="text-xs text-sky-600 font-bold hover:underline">View Logs</button>
                   </div>
                   <div className="divide-y divide-slate-100">
                     {users.slice(0, 3).map(u => (
@@ -596,7 +639,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           )}
 
           {/* =========================================================================
-              VIEW 3: USER & RBAC ACCESS MATRIX
+              VIEW 3: USER & RBAC ACCESS MATRIX (WITH EDIT & DELETE)
           ========================================================================== */}
           {activeMenu === 'users' && (
             <div className="space-y-4">
@@ -623,8 +666,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                         <th className="p-3.5">User Profile</th>
                         <th className="p-3.5">Role & Scope</th>
                         <th className="p-3.5">Audit Trail (Last Modified)</th>
-                        <th className="p-3.5">Account Status</th>
-                        <th className="p-3.5 text-right">Reset Password</th>
+                        <th className="p-3.5">Status</th>
+                        <th className="p-3.5 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -668,13 +711,35 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                           </td>
 
                           <td className="p-3.5 text-right">
-                            <button
-                              onClick={() => { setSelectedUser(u); setResetPassValue(''); setModalType('RESET_PASS'); }}
-                              className="p-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 rounded-lg transition cursor-pointer"
-                              title="Reset Password"
-                            >
-                              <Key className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => { 
+                                  setSelectedUser(u); 
+                                  setUserForm({ username: u.username, name: u.name, role: u.role, branch: u.branch, site_access: u.site_access, password_hash: '' }); 
+                                  setModalType('EDIT_USER'); 
+                                }}
+                                className="p-1.5 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 rounded-lg transition cursor-pointer"
+                                title="Edit User"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => { setSelectedUser(u); setResetPassValue(''); setModalType('RESET_PASS'); }}
+                                className="p-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 rounded-lg transition cursor-pointer"
+                                title="Reset Password"
+                              >
+                                <Key className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteUser(u)}
+                                className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition cursor-pointer"
+                                title="Delete User"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -754,7 +819,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           )}
 
           {/* =========================================================================
-              VIEW 5: DRIVER DIRECTORY
+              VIEW 5: DRIVER DIRECTORY (WITH EDIT & DELETE)
           ========================================================================== */}
           {activeMenu === 'drivers' && (
             <div className="space-y-4">
@@ -764,7 +829,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   <p className="text-xs text-slate-500">Manage heavy vehicle drivers, contact details and assigned trucks</p>
                 </div>
                 <button
-                  onClick={() => setModalType('ADD_DRIVER')}
+                  onClick={() => {
+                    setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
+                    setModalType('ADD_DRIVER');
+                  }}
                   className="flex items-center gap-2 bg-[#0099ff] hover:bg-[#0088e6] text-white font-bold px-4 py-2.5 rounded-xl text-xs transition shadow-md shadow-sky-500/20 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -783,6 +851,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                         <th className="p-3.5">Commercial DL No</th>
                         <th className="p-3.5">Assigned Truck</th>
                         <th className="p-3.5">Status</th>
+                        <th className="p-3.5 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -796,6 +865,28 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                             <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               {d.status}
                             </span>
+                          </td>
+                          <td className="p-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => {
+                                  setSelectedDriver(d);
+                                  setDriverForm({ ...d });
+                                  setModalType('EDIT_DRIVER');
+                                }}
+                                className="p-1.5 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 rounded-lg transition cursor-pointer"
+                                title="Edit Driver"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteDriver(d)}
+                                className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition cursor-pointer"
+                                title="Delete Driver"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -858,7 +949,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Create Operational Plant Site</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
             <form onSubmit={handleCreateSite} className="space-y-3 text-xs">
               <div>
@@ -892,8 +983,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 />
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20">Create Site</button>
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Create Site</button>
               </div>
             </form>
           </div>
@@ -906,7 +997,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Register Master Vehicle</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
             <form onSubmit={handleCreateVehicle} className="space-y-3 text-xs">
               <div>
@@ -956,8 +1047,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </select>
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20">Register Vehicle</button>
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Register Vehicle</button>
               </div>
             </form>
           </div>
@@ -970,7 +1061,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Create Staff User Account</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
             <form onSubmit={handleCreateUser} className="space-y-3 text-xs">
               <div>
@@ -1030,22 +1121,98 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </select>
                 </div>
               </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Branch / Location</label>
+                <input
+                  value={userForm.branch}
+                  onChange={(e) => setUserForm({ ...userForm, branch: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-sky-500"
+                />
+              </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20">Create Account</button>
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Create Account</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 4. Modal: Add Driver */}
+      {/* 4. Modal: Edit User */}
+      {modalType === 'EDIT_USER' && selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-base text-slate-900">Edit User Details</h3>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
+            </div>
+            <form onSubmit={handleUpdateUser} className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Username (Read-Only)</label>
+                <input
+                  disabled
+                  value={userForm.username}
+                  className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-500 font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Full Name</label>
+                <input
+                  required
+                  value={userForm.name}
+                  onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Role</label>
+                  <select
+                    value={userForm.role}
+                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="DIRECTOR">Director (Client Admin)</option>
+                    <option value="HO_ACCOUNTS">HO Accounts</option>
+                    <option value="SITE_EXEC">Site Executive</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Site Scope</label>
+                  <select
+                    value={userForm.site_access}
+                    onChange={(e) => setUserForm({ ...userForm, site_access: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-sky-500"
+                  >
+                    <option value="ALL">All Plants</option>
+                    {sites.map(s => <option key={s.id} value={s.code}>{s.name} ({s.code})</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Branch / Location</label>
+                <input
+                  value={userForm.branch}
+                  onChange={(e) => setUserForm({ ...userForm, branch: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Save User</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. Modal: Add Driver */}
       {modalType === 'ADD_DRIVER' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Add Commercial Driver</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
             <form onSubmit={handleCreateDriver} className="space-y-3 text-xs">
               <div>
@@ -1090,15 +1257,70 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 />
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20">Save Driver</button>
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Save Driver</button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 5. Modal: Reset Password */}
+      {/* 6. Modal: Edit Driver */}
+      {modalType === 'EDIT_DRIVER' && selectedDriver && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-bold text-base text-slate-900">Edit Commercial Driver</h3>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
+            </div>
+            <form onSubmit={handleUpdateDriver} className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Driver Full Name</label>
+                <input
+                  required
+                  value={driverForm.name}
+                  onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Mobile Number</label>
+                  <input
+                    required
+                    value={driverForm.phone}
+                    onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">License No</label>
+                  <input
+                    required
+                    value={driverForm.license_no}
+                    onChange={(e) => setDriverForm({ ...driverForm, license_no: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-sky-500"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Assigned Truck Number</label>
+                <input
+                  value={driverForm.assigned_vehicle}
+                  onChange={(e) => setDriverForm({ ...driverForm, assigned_vehicle: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-sky-500"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Update Driver</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Modal: Reset Password */}
       {modalType === 'RESET_PASS' && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
@@ -1121,20 +1343,20 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               />
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button onClick={() => setModalType(null)} className="px-3.5 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs">Cancel</button>
-              <button onClick={handleResetPassword} className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-md shadow-amber-500/20">Update Password</button>
+              <button onClick={() => setModalType(null)} className="px-3.5 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl text-xs cursor-pointer">Cancel</button>
+              <button onClick={handleResetPassword} className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl text-xs shadow-md shadow-amber-500/20 cursor-pointer">Update Password</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 6. Modal: Edit My Profile */}
+      {/* 8. Modal: Edit My Profile */}
       {modalType === 'EDIT_PROFILE' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
           <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Edit My Profile</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
             <form onSubmit={handleUpdateSelfProfile} className="space-y-3 text-xs">
               <div>
@@ -1157,8 +1379,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 />
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20">Save Changes</button>
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Save Changes</button>
               </div>
             </form>
           </div>
