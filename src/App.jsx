@@ -6,15 +6,15 @@ import { supabase } from './supabaseClient';
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Live Login directly against Supabase 'app_users' table
+  // Direct Exact 1:1 Live Login against Supabase 'app_users' table
   const handleLoginSuccess = async (username, password) => {
     try {
       const { data, error } = await supabase
         .from('app_users')
         .select('*')
-        .eq('username', username.trim().toLowerCase())
-        .eq('password_hash', password.trim())
-        .single();
+        .eq('username', username)
+        .eq('password_hash', password)
+        .maybeSingle();
 
       if (error || !data) {
         alert('Invalid Username or Password! Please check your credentials.');
@@ -22,7 +22,7 @@ export default function App() {
       }
 
       if (!data.is_active) {
-        alert('This account has been deactivated by Super Admin.');
+        alert('This account has been deactivated.');
         return;
       }
 
