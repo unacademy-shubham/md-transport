@@ -31,15 +31,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [sites, setSites] = useState([]);
   const [users, setUsers] = useState([]);
   const [vehicles, setVehicles] = useState([]);
-  const [drivers, setDrivers] = useState([
-    { id: 'DRV-1', name: 'Rameshwar Gurjar', phone: '9826012345', license_no: 'MP09-2018-8821', assigned_vehicle: 'MP-09-HH-4412', status: 'Active' },
-    { id: 'DRV-2', name: 'Kailash Meena', phone: '9414098765', license_no: 'RJ03-2016-1144', assigned_vehicle: 'RJ-03-GA-1109', status: 'Active' },
-    { id: 'DRV-3', name: 'Sanjay Patil', phone: '9822054321', license_no: 'MH18-2019-9022', assigned_vehicle: 'MH-18-BQ-7740', status: 'Active' },
-  ]);
+  const [drivers, setDrivers] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
 
   // Modal States
   const [modalType, setModalType] = useState(null); 
-  // 'ADD_SITE', 'ADD_USER', 'EDIT_USER', 'ADD_VEHICLE', 'ADD_DRIVER', 'EDIT_DRIVER', 'RESET_PASS', 'EDIT_PROFILE'
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedDriver, setSelectedDriver] = useState(null);
 
@@ -48,7 +44,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     open: false,
     title: '',
     message: '',
-    type: 'danger', // danger, warning
     onConfirm: () => {}
   });
 
@@ -71,6 +66,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }, 3500);
   };
 
+  // Helper: Log Action to Audit Trail Table
+  const logAuditActivity = async (module, action_type, description) => {
+    try {
+      await supabase.from('audit_logs').insert([{
+        module,
+        action_type,
+        description,
+        performed_by: currentUser.name,
+        performed_by_username: currentUser.username
+      }]);
+    } catch (err) {
+      console.error('Audit log error:', err);
+    }
+  };
+
   const handleMenuChange = (menu) => {
     setActiveMenu(menu);
     localStorage.setItem('md_transport_active_tab', menu);
@@ -79,29 +89,35 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   // Fetch Live Data from Supabase
   const fetchAllData = async () => {
     try {
-      const [sitesRes, usersRes, vehiclesRes] = await Promise.all([
+      const [sitesRes, usersRes, vehiclesRes, driversRes, logsRes] = await Promise.all([
         supabase.from('sites').select('*').order('created_at', { ascending: false }),
         supabase.from('app_users').select('*').order('created_at', { ascending: false }),
-        supabase.from('vehicles').select('*').order('created_at', { ascending: false })
+        supabase.from('vehicles').select('*').order('created_at', { ascending: false }),
+        supabase.from('drivers').select('*').order('created_at', { ascending: false }),
+        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(100)
       ]);
 
       if (sitesRes.data) setSites(sitesRes.data);
       if (usersRes.data) setUsers(usersRes.data);
       if (vehiclesRes.data) setVehicles(vehiclesRes.data);
+      if (driversRes.data) setDrivers(driversRes.data);
+      if (logsRes.data) setAuditLogs(logsRes.data);
     } catch (err) {
       console.error('Error fetching Supabase data:', err);
     }
   };
 
-  // Real-time WebSocket Listeners (Sub-second DB syncing)
+  // Real-time WebSocket Listeners
   useEffect(() => {
     fetchAllData();
 
     const channel = supabase
-      .channel('realtime_erp_changes')
+      .channel('realtime_master_channel')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => fetchAllData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => fetchAllData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => fetchAllData())
       .subscribe();
 
     return () => {
@@ -112,9 +128,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   // 1. Create Site
   const handleCreateSite = async (e) => {
     e.preventDefault();
+    const siteCode = siteForm.code.toUpperCase().trim();
     const { error } = await supabase.from('sites').insert([{
       name: siteForm.name,
-      code: siteForm.code.toUpperCase().trim(),
+      code: siteCode,
       state: siteForm.state,
       created_by: currentUser.name
     }]);
@@ -122,6 +139,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error creating site: ' + error.message, 'error');
     } else {
+      await logAuditActivity('SITE', 'CREATE', `Created operational site ${siteForm.name} (${siteCode})`);
       setSiteForm({ name: '', code: '', state: '' });
       setModalType(null);
       showToast('Operational plant site created successfully!');
@@ -131,8 +149,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   // 2. Create Vehicle
   const handleCreateVehicle = async (e) => {
     e.preventDefault();
+    const vehicleNo = vehicleForm.vehicle_no.toUpperCase().trim();
     const { error } = await supabase.from('vehicles').insert([{
-      vehicle_no: vehicleForm.vehicle_no.toUpperCase().trim(),
+      vehicle_no: vehicleNo,
       vehicle_type: vehicleForm.vehicle_type,
       capacity_mt: parseFloat(vehicleForm.capacity_mt),
       assigned_site: vehicleForm.assigned_site || null,
@@ -142,6 +161,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error adding vehicle: ' + error.message, 'error');
     } else {
+      await logAuditActivity('FLEET', 'CREATE', `Registered truck ${vehicleNo} (${vehicleForm.vehicle_type} - ${vehicleForm.capacity_mt} MT)`);
       setVehicleForm({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
       setModalType(null);
       showToast('Vehicle registered in fleet inventory!');
@@ -157,8 +177,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       ? { canViewFinancials: true, canCreateLR: false, canEditLR: true, canManageFuel: true, canManageUsers: false }
       : { canViewFinancials: false, canCreateLR: true, canEditLR: false, canManageFuel: true, canManageUsers: false };
 
+    const cleanUser = userForm.username.trim();
     const { error } = await supabase.from('app_users').insert([{
-      username: userForm.username.toLowerCase().trim(),
+      username: cleanUser,
       password_hash: userForm.password_hash,
       name: userForm.name,
       role: userForm.role,
@@ -172,9 +193,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error creating user: ' + error.message, 'error');
     } else {
+      await logAuditActivity('USER', 'CREATE', `Provisioned user account @${cleanUser} for ${userForm.name} (${userForm.role})`);
       setUserForm({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
       setModalType(null);
-      showToast(`User account @${userForm.username} provisioned!`);
+      showToast(`User account @${cleanUser} provisioned!`);
     }
   };
 
@@ -199,13 +221,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error updating user: ' + error.message, 'error');
     } else {
+      await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`);
       setModalType(null);
       setSelectedUser(null);
       showToast('User account details updated!');
     }
   };
 
-  // 5. Delete User (Custom Confirmation)
+  // 5. Delete User
   const handleDeleteUser = (user) => {
     if (user.id === currentUser.id) {
       showToast('You cannot delete your own logged-in administrator account.', 'error');
@@ -216,40 +239,64 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       open: true,
       title: 'Delete Staff User Account',
       message: `Are you sure you want to permanently delete user @${user.username} (${user.name})? This action cannot be undone.`,
-      type: 'danger',
       onConfirm: async () => {
         const { error } = await supabase.from('app_users').delete().eq('id', user.id);
-        if (error) showToast('Error deleting user: ' + error.message, 'error');
-        else showToast(`User @${user.username} deleted successfully!`);
+        if (error) {
+          showToast('Error deleting user: ' + error.message, 'error');
+        } else {
+          await logAuditActivity('USER', 'DELETE', `Deleted user account @${user.username} (${user.name})`);
+          showToast(`User @${user.username} deleted successfully!`);
+        }
         setConfirmDialog(prev => ({ ...prev, open: false }));
       }
     });
   };
 
-  // 6. Drivers CRUD (Custom Confirmation)
-  const handleCreateDriver = (e) => {
+  // 6. Drivers CRUD with DB Sync & Audit Logs
+  const handleCreateDriver = async (e) => {
     e.preventDefault();
-    const newDrvr = {
-      id: `DRV-${Date.now().toString().slice(-4)}`,
+    const { error } = await supabase.from('drivers').insert([{
       name: driverForm.name,
       phone: driverForm.phone,
-      license_no: driverForm.license_no.toUpperCase(),
-      assigned_vehicle: driverForm.assigned_vehicle.toUpperCase() || 'Unassigned',
-      status: 'Active'
-    };
-    setDrivers([newDrvr, ...drivers]);
-    setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
-    setModalType(null);
-    showToast(`Driver ${newDrvr.name} added to directory!`);
+      license_no: driverForm.license_no.toUpperCase().trim(),
+      assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
+      status: 'Active',
+      created_by: currentUser.name
+    }]);
+
+    if (error) {
+      showToast('Error adding driver: ' + error.message, 'error');
+    } else {
+      await logAuditActivity('DRIVER', 'CREATE', `Added driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`);
+      setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
+      setModalType(null);
+      showToast(`Driver ${driverForm.name} registered in database!`);
+    }
   };
 
-  const handleUpdateDriver = (e) => {
+  const handleUpdateDriver = async (e) => {
     e.preventDefault();
     if (!selectedDriver) return;
-    setDrivers(drivers.map(d => d.id === selectedDriver.id ? { ...d, ...driverForm } : d));
-    setModalType(null);
-    setSelectedDriver(null);
-    showToast('Driver details updated!');
+
+    const { error } = await supabase
+      .from('drivers')
+      .update({
+        name: driverForm.name,
+        phone: driverForm.phone,
+        license_no: driverForm.license_no.toUpperCase().trim(),
+        assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
+        status: driverForm.status
+      })
+      .eq('id', selectedDriver.id);
+
+    if (error) {
+      showToast('Error updating driver: ' + error.message, 'error');
+    } else {
+      await logAuditActivity('DRIVER', 'UPDATE', `Updated details of driver ${driverForm.name} (DL: ${driverForm.license_no})`);
+      setModalType(null);
+      setSelectedDriver(null);
+      showToast('Driver details updated!');
+    }
   };
 
   const handleDeleteDriver = (driver) => {
@@ -257,11 +304,15 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       open: true,
       title: 'Remove Commercial Driver',
       message: `Are you sure you want to remove driver ${driver.name} (${driver.license_no}) from active records?`,
-      type: 'danger',
-      onConfirm: () => {
-        setDrivers(drivers.filter(d => d.id !== driver.id));
+      onConfirm: async () => {
+        const { error } = await supabase.from('drivers').delete().eq('id', driver.id);
+        if (error) {
+          showToast('Error deleting driver: ' + error.message, 'error');
+        } else {
+          await logAuditActivity('DRIVER', 'DELETE', `Removed driver ${driver.name} (DL: ${driver.license_no}) from system`);
+          showToast(`Driver ${driver.name} removed successfully!`);
+        }
         setConfirmDialog(prev => ({ ...prev, open: false }));
-        showToast(`Driver ${driver.name} removed successfully!`);
       }
     });
   };
@@ -282,6 +333,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error resetting password: ' + error.message, 'error');
     } else {
+      await logAuditActivity('AUTH', 'PASSWORD_RESET', `Reset login password for user @${selectedUser.username}`);
       showToast(`Password updated for user: @${selectedUser.username}!`);
       setResetPassValue('');
       setSelectedUser(null);
@@ -306,6 +358,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
+      await logAuditActivity('USER', 'UPDATE', `Super Admin updated profile details`);
       showToast('Your profile has been updated!');
       if (onUserUpdate) onUserUpdate({ ...currentUser, name: profileForm.name, password_hash: profileForm.password });
       setModalType(null);
@@ -326,16 +379,18 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       })
       .eq('id', user.id);
 
-    if (error) showToast('Error: ' + error.message, 'error');
-    else showToast(`User @${user.username} status set to ${nextStatus ? 'Active' : 'Suspended'}`);
+    if (error) {
+      showToast('Error: ' + error.message, 'error');
+    } else {
+      await logAuditActivity('USER', 'UPDATE', `Changed @${user.username} account status to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'}`);
+      showToast(`User @${user.username} status set to ${nextStatus ? 'Active' : 'Suspended'}`);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col font-sans select-none">
       
-      {/* =========================================================================
-          CUSTOM FLOATING TOAST NOTIFICATION
-      ========================================================================== */}
+      {/* Toast Notification */}
       {toast.open && (
         <div className="fixed top-5 right-5 z-60 animate-in fade-in slide-in-from-top-4 duration-300">
           <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold ${
@@ -355,7 +410,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             <span>{toast.message}</span>
             <button
               onClick={() => setToast({ open: false, message: '', type: 'success' })}
-              className="p-1 text-slate-400 hover:text-slate-600 ml-2"
+              className="p-1 text-slate-400 hover:text-slate-600 ml-2 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -363,9 +418,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* =========================================================================
-          CUSTOM MODERN CONFIRMATION DIALOG
-      ========================================================================== */}
+      {/* Custom Confirmation Modal */}
       {confirmDialog.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-200">
@@ -398,13 +451,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* =========================================================================
-          1. ENTERPRISE HEADER
-      ========================================================================== */}
+      {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 px-6 py-3 shadow-xs">
         <div className="flex items-center justify-between w-full">
           
-          {/* Logo & System Title */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-[#0099ff] text-white flex items-center justify-center font-black shadow-md shadow-sky-500/20 text-lg">
               MD
@@ -421,7 +471,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           </div>
 
-          {/* User Profile Corner with Dropdown */}
           <div className="relative flex items-center gap-3">
             <div className="relative">
               <button
@@ -479,12 +528,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       </header>
 
-      {/* =========================================================================
-          2. MAIN BODY (SIDEBAR + CONTENT WORKSPACE)
-      ========================================================================== */}
+      {/* Main Body */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* Left Sidebar */}
+        {/* Sidebar */}
         <aside className="w-64 bg-white border-r border-slate-200 flex flex-col justify-between p-4 shrink-0 shadow-xs">
           <div className="space-y-1">
             
@@ -568,12 +615,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
             <button
               onClick={() => handleMenuChange('logs')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              className={`w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                 activeMenu === 'logs' ? 'bg-[#0099ff] text-white shadow-md shadow-sky-500/20' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
-              <History className="w-4 h-4" />
-              <span>Audit Trail Logs</span>
+              <div className="flex items-center gap-3">
+                <History className="w-4 h-4" />
+                <span>Audit Trail Logs</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'logs' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                {auditLogs.length}
+              </span>
             </button>
 
           </div>
@@ -584,12 +636,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           </div>
         </aside>
 
-        {/* Dynamic Main Content Workspace */}
+        {/* Dynamic Workspace */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
-          {/* =========================================================================
-              VIEW 1: DASHBOARD OVERVIEW
-          ========================================================================== */}
+          {/* VIEW 1: DASHBOARD */}
           {activeMenu === 'dashboard' && (
             <div className="space-y-6">
               <div>
@@ -597,7 +647,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <p className="text-xs text-slate-500 mt-0.5">Real-time statistics across all branches and fleet operations</p>
               </div>
 
-              {/* 4 Metric Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
                 <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
@@ -657,11 +706,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               {/* Quick Jump Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                {/* Recent Sites Preview */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-xs">
                   <div className="flex justify-between items-center">
                     <h3 className="text-sm font-bold text-slate-900">Plant Locations</h3>
-                    <button onClick={() => handleMenuChange('sites')} className="text-xs text-sky-600 font-bold hover:underline">View All</button>
+                    <button onClick={() => handleMenuChange('sites')} className="text-xs text-sky-600 font-bold hover:underline cursor-pointer">View All</button>
                   </div>
                   <div className="divide-y divide-slate-100">
                     {sites.slice(0, 3).map(s => (
@@ -678,21 +726,20 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </div>
                 </div>
 
-                {/* Recent Users & Audit Preview */}
                 <div className="bg-white border border-slate-200 rounded-2xl p-5 space-y-3 shadow-xs">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-sm font-bold text-slate-900">Recent User Actions</h3>
-                    <button onClick={() => handleMenuChange('logs')} className="text-xs text-sky-600 font-bold hover:underline">View Logs</button>
+                    <h3 className="text-sm font-bold text-slate-900">Recent Audit Actions</h3>
+                    <button onClick={() => handleMenuChange('logs')} className="text-xs text-sky-600 font-bold hover:underline cursor-pointer">View Logs</button>
                   </div>
                   <div className="divide-y divide-slate-100">
-                    {users.slice(0, 3).map(u => (
-                      <div key={u.id} className="py-2.5 flex justify-between items-center text-xs">
+                    {auditLogs.slice(0, 3).map(log => (
+                      <div key={log.id} className="py-2.5 flex justify-between items-center text-xs">
                         <div>
-                          <p className="font-bold text-slate-800">{u.name} <span className="text-slate-400 font-normal">(@{u.username})</span></p>
-                          <p className="text-slate-400 text-[11px]">{u.last_action_note || 'Account Active'}</p>
+                          <p className="font-bold text-slate-800">{log.description}</p>
+                          <p className="text-slate-400 text-[10px]">By {log.performed_by}</p>
                         </div>
-                        <span className="bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded border border-purple-200 text-[10px]">
-                          {u.role}
+                        <span className="bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded border border-amber-200 text-[10px]">
+                          {log.module}
                         </span>
                       </div>
                     ))}
@@ -703,9 +750,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* =========================================================================
-              VIEW 2: SITES / PLANTS MASTER
-          ========================================================================== */}
+          {/* VIEW 2: SITES */}
           {activeMenu === 'sites' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -722,7 +767,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </button>
               </div>
 
-              {/* Sites Table */}
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
@@ -758,14 +802,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* =========================================================================
-              VIEW 3: USER & RBAC ACCESS MATRIX (WITH EDIT & DELETE)
-          ========================================================================== */}
+          {/* VIEW 3: USERS */}
           {activeMenu === 'users' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">User Management & Audit Control</h2>
+                  <h2 className="text-lg font-bold text-slate-900">User Management & Access Matrix</h2>
                   <p className="text-xs text-slate-500">Provision Director, Accounts, and Site Executive logins</p>
                 </div>
                 <button
@@ -777,7 +819,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </button>
               </div>
 
-              {/* Users Table */}
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
@@ -785,7 +826,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       <tr>
                         <th className="p-3.5">User Profile</th>
                         <th className="p-3.5">Role & Scope</th>
-                        <th className="p-3.5">Audit Trail (Last Modified)</th>
+                        <th className="p-3.5">Audit Note</th>
                         <th className="p-3.5">Status</th>
                         <th className="p-3.5 text-right">Actions</th>
                       </tr>
@@ -806,15 +847,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                           </td>
 
                           <td className="p-3.5">
-                            <div className="flex items-start gap-1.5 text-[11px]">
-                              <History className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-slate-800 font-semibold">{u.last_action_note || 'Account Created'}</p>
-                                <p className="text-[10px] text-slate-400 font-mono">
-                                  By: {u.updated_by !== 'None' ? u.updated_by : u.created_by} • {new Date(u.updated_at || u.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </p>
-                              </div>
-                            </div>
+                            <p className="text-slate-800 font-semibold">{u.last_action_note || 'Account Created'}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">
+                              By: {u.updated_by !== 'None' ? u.updated_by : u.created_by}
+                            </p>
                           </td>
 
                           <td className="p-3.5">
@@ -870,9 +906,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* =========================================================================
-              VIEW 4: VEHICLE & FLEET MASTER
-          ========================================================================== */}
+          {/* VIEW 4: VEHICLES */}
           {activeMenu === 'vehicles' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -889,7 +923,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </button>
               </div>
 
-              {/* Vehicles Table */}
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
@@ -938,9 +971,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* =========================================================================
-              VIEW 5: DRIVER DIRECTORY (WITH EDIT & DELETE)
-          ========================================================================== */}
+          {/* VIEW 5: DRIVERS */}
           {activeMenu === 'drivers' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -960,7 +991,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </button>
               </div>
 
-              {/* Drivers Table */}
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
@@ -975,41 +1005,47 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {drivers.map((d) => (
-                        <tr key={d.id} className="hover:bg-slate-50 transition">
-                          <td className="p-3.5 font-bold text-slate-900">{d.name}</td>
-                          <td className="p-3.5 font-mono text-slate-600">{d.phone}</td>
-                          <td className="p-3.5 font-mono font-bold text-slate-700">{d.license_no}</td>
-                          <td className="p-3.5 font-mono font-bold text-sky-600">{d.assigned_vehicle}</td>
-                          <td className="p-3.5">
-                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              {d.status}
-                            </span>
-                          </td>
-                          <td className="p-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => {
-                                  setSelectedDriver(d);
-                                  setDriverForm({ ...d });
-                                  setModalType('EDIT_DRIVER');
-                                }}
-                                className="p-1.5 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 rounded-lg transition cursor-pointer"
-                                title="Edit Driver"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDriver(d)}
-                                className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition cursor-pointer"
-                                title="Delete Driver"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
+                      {drivers.length === 0 ? (
+                        <tr>
+                          <td colSpan="6" className="p-6 text-center text-slate-400">No drivers added in database yet. Click button above to add.</td>
                         </tr>
-                      ))}
+                      ) : (
+                        drivers.map((d) => (
+                          <tr key={d.id} className="hover:bg-slate-50 transition">
+                            <td className="p-3.5 font-bold text-slate-900">{d.name}</td>
+                            <td className="p-3.5 font-mono text-slate-600">{d.phone}</td>
+                            <td className="p-3.5 font-mono font-bold text-slate-700">{d.license_no}</td>
+                            <td className="p-3.5 font-mono font-bold text-sky-600">{d.assigned_vehicle}</td>
+                            <td className="p-3.5">
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {d.status}
+                              </span>
+                            </td>
+                            <td className="p-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => {
+                                    setSelectedDriver(d);
+                                    setDriverForm({ ...d });
+                                    setModalType('EDIT_DRIVER');
+                                  }}
+                                  className="p-1.5 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-600 rounded-lg transition cursor-pointer"
+                                  title="Edit Driver"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteDriver(d)}
+                                  className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-lg transition cursor-pointer"
+                                  title="Delete Driver"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -1017,41 +1053,50 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* =========================================================================
-              VIEW 6: AUDIT TRAIL LOGS
-          ========================================================================== */}
+          {/* VIEW 6: CENTRAL AUDIT TRAIL LOGS */}
           {activeMenu === 'logs' && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">System Security & Modification Audit Logs</h2>
-                <p className="text-xs text-slate-500">Live track of every user addition, permission update and password reset</p>
+                <h2 className="text-lg font-bold text-slate-900">System Security & Central Modification Audit Trail</h2>
+                <p className="text-xs text-slate-500">Live immutable stream of all creation, updates, and deletions across all ERP modules</p>
               </div>
 
               <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs divide-y divide-slate-100">
-                {users.map((u) => (
-                  <div key={u.id} className="py-3 flex items-start justify-between text-xs">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-amber-50 text-amber-600 rounded-xl mt-0.5">
-                        <History className="w-4 h-4" />
+                {auditLogs.length === 0 ? (
+                  <p className="text-center py-6 text-xs text-slate-400">No activity recorded yet.</p>
+                ) : (
+                  auditLogs.map((log) => (
+                    <div key={log.id} className="py-3.5 flex items-start justify-between text-xs">
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-xl mt-0.5 ${
+                          log.action_type === 'DELETE' 
+                            ? 'bg-rose-50 text-rose-600' 
+                            : log.action_type === 'CREATE' 
+                            ? 'bg-emerald-50 text-emerald-600'
+                            : 'bg-amber-50 text-amber-600'
+                        }`}>
+                          <History className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-slate-900">{log.description}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-slate-100 text-slate-700">
+                              {log.module}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-mono mt-1">
+                            Action: <span className="font-bold">{log.action_type}</span> • Performed by: <span className="font-bold text-slate-700">{log.performed_by}</span> (@{log.performed_by_username || 'system'})
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-slate-900">
-                          Account Action on <span className="text-sky-600">@{u.username}</span> ({u.name})
-                        </p>
-                        <p className="text-slate-600 font-medium mt-0.5">{u.last_action_note || 'Account provisioned'}</p>
-                        <p className="text-[10px] text-slate-400 font-mono mt-1">
-                          Role: {u.role} • Site: {u.site_access} • Branch: {u.branch}
-                        </p>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] bg-slate-50 border border-slate-200 text-slate-600 px-2 py-0.5 rounded font-mono font-bold">
+                          {new Date(log.created_at).toLocaleString()}
+                        </span>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-mono font-bold">
-                        {new Date(u.updated_at || u.created_at).toLocaleString()}
-                      </span>
-                      <p className="text-[10px] text-slate-400 mt-1">By: {u.updated_by !== 'None' ? u.updated_by : u.created_by}</p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </div>
           )}
@@ -1059,9 +1104,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </main>
       </div>
 
-      {/* =========================================================================
-          MODALS CONTAINER (CLEAN LIGHT THEME)
-      ========================================================================== */}
+      {/* MODALS */}
       
       {/* 1. Modal: Add Site */}
       {modalType === 'ADD_SITE' && (
@@ -1470,7 +1513,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 8. Modal: Edit My Profile */}
+      {/* 8. Modal: Edit Profile */}
       {modalType === 'EDIT_PROFILE' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
