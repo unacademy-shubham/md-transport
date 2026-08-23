@@ -1,27 +1,57 @@
 import React, { useState } from 'react';
 import Login from './pages/Login';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import { supabase } from './supabaseClient';
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
 
-  const handleLoginSuccess = (username, password) => {
-    // Check credentials logic
-    setIsLoggedIn(true);
+  // Live Login directly against Supabase 'app_users' table
+  const handleLoginSuccess = async (username, password) => {
+    try {
+      const { data, error } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('username', username.trim().toLowerCase())
+        .eq('password_hash', password.trim())
+        .single();
+
+      if (error || !data) {
+        alert('Invalid Username or Password! Please check your credentials.');
+        return;
+      }
+
+      if (!data.is_active) {
+        alert('This account has been deactivated by Super Admin.');
+        return;
+      }
+
+      setCurrentUser(data);
+    } catch (err) {
+      console.error('Login error:', err);
+      alert('Database connection error.');
+    }
   };
 
-  if (!isLoggedIn) {
+  const handleLogout = () => {
+    setCurrentUser(null);
+  };
+
+  const handleUserUpdate = (updatedUserData) => {
+    setCurrentUser(updatedUserData);
+  };
+
+  // View 1: Not Authenticated (Login Screen)
+  if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // View 2: Super Admin / Main ERP Console
   return (
-    <div className="p-8 text-center">
-      <h1 className="text-xl font-bold">Welcome to MD Transport Dashboard!</h1>
-      <button 
-        onClick={() => setIsLoggedIn(false)}
-        className="mt-4 px-4 py-2 bg-slate-900 text-white rounded-lg text-xs"
-      >
-        Sign Out
-      </button>
-    </div>
+    <SuperAdminDashboard
+      currentUser={currentUser}
+      onLogout={handleLogout}
+      onUserUpdate={handleUserUpdate}
+    />
   );
 }
