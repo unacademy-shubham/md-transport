@@ -13,7 +13,11 @@ import {
   ChevronDown,
   CheckCircle2,
   Trash2,
-  Edit3
+  Edit3,
+  AlertTriangle,
+  X,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
@@ -39,6 +43,18 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedDriver, setSelectedDriver] = useState(null);
 
+  // Custom Confirm Dialog State
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    title: '',
+    message: '',
+    type: 'danger', // danger, warning
+    onConfirm: () => {}
+  });
+
+  // Custom Toast State
+  const [toast, setToast] = useState({ open: false, message: '', type: 'success' });
+
   // Form Inputs
   const [siteForm, setSiteForm] = useState({ name: '', code: '', state: '' });
   const [vehicleForm, setVehicleForm] = useState({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
@@ -46,6 +62,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
   const [resetPassValue, setResetPassValue] = useState('');
   const [profileForm, setProfileForm] = useState({ name: currentUser.name, password: currentUser.password_hash });
+
+  // Toast Helper
+  const showToast = (message, type = 'success') => {
+    setToast({ open: true, message, type });
+    setTimeout(() => {
+      setToast({ open: false, message: '', type: 'success' });
+    }, 3500);
+  };
 
   const handleMenuChange = (menu) => {
     setActiveMenu(menu);
@@ -95,10 +119,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       created_by: currentUser.name
     }]);
 
-    if (error) alert('Error creating site: ' + error.message);
-    else {
+    if (error) {
+      showToast('Error creating site: ' + error.message, 'error');
+    } else {
       setSiteForm({ name: '', code: '', state: '' });
       setModalType(null);
+      showToast('Operational plant site created successfully!');
     }
   };
 
@@ -113,10 +139,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       created_by: currentUser.name
     }]);
 
-    if (error) alert('Error creating vehicle: ' + error.message);
-    else {
+    if (error) {
+      showToast('Error adding vehicle: ' + error.message, 'error');
+    } else {
       setVehicleForm({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
       setModalType(null);
+      showToast('Vehicle registered in fleet inventory!');
     }
   };
 
@@ -141,10 +169,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       last_action_note: `Created by ${currentUser.name}`
     }]);
 
-    if (error) alert('Error creating user: ' + error.message);
-    else {
+    if (error) {
+      showToast('Error creating user: ' + error.message, 'error');
+    } else {
       setUserForm({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
       setModalType(null);
+      showToast(`User account @${userForm.username} provisioned!`);
     }
   };
 
@@ -166,26 +196,37 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       })
       .eq('id', selectedUser.id);
 
-    if (error) alert('Error updating user: ' + error.message);
-    else {
+    if (error) {
+      showToast('Error updating user: ' + error.message, 'error');
+    } else {
       setModalType(null);
       setSelectedUser(null);
+      showToast('User account details updated!');
     }
   };
 
-  // 5. Delete User
-  const handleDeleteUser = async (user) => {
+  // 5. Delete User (Custom Confirmation)
+  const handleDeleteUser = (user) => {
     if (user.id === currentUser.id) {
-      alert('You cannot delete your own logged-in administrator account.');
+      showToast('You cannot delete your own logged-in administrator account.', 'error');
       return;
     }
-    if (!window.confirm(`Are you sure you want to permanently delete user @${user.username} (${user.name})?`)) return;
 
-    const { error } = await supabase.from('app_users').delete().eq('id', user.id);
-    if (error) alert('Error deleting user: ' + error.message);
+    setConfirmDialog({
+      open: true,
+      title: 'Delete Staff User Account',
+      message: `Are you sure you want to permanently delete user @${user.username} (${user.name})? This action cannot be undone.`,
+      type: 'danger',
+      onConfirm: async () => {
+        const { error } = await supabase.from('app_users').delete().eq('id', user.id);
+        if (error) showToast('Error deleting user: ' + error.message, 'error');
+        else showToast(`User @${user.username} deleted successfully!`);
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+      }
+    });
   };
 
-  // 6. Drivers CRUD
+  // 6. Drivers CRUD (Custom Confirmation)
   const handleCreateDriver = (e) => {
     e.preventDefault();
     const newDrvr = {
@@ -199,6 +240,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     setDrivers([newDrvr, ...drivers]);
     setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
     setModalType(null);
+    showToast(`Driver ${newDrvr.name} added to directory!`);
   };
 
   const handleUpdateDriver = (e) => {
@@ -207,11 +249,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     setDrivers(drivers.map(d => d.id === selectedDriver.id ? { ...d, ...driverForm } : d));
     setModalType(null);
     setSelectedDriver(null);
+    showToast('Driver details updated!');
   };
 
   const handleDeleteDriver = (driver) => {
-    if (!window.confirm(`Are you sure you want to remove driver ${driver.name}?`)) return;
-    setDrivers(drivers.filter(d => d.id !== driver.id));
+    setConfirmDialog({
+      open: true,
+      title: 'Remove Commercial Driver',
+      message: `Are you sure you want to remove driver ${driver.name} (${driver.license_no}) from active records?`,
+      type: 'danger',
+      onConfirm: () => {
+        setDrivers(drivers.filter(d => d.id !== driver.id));
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        showToast(`Driver ${driver.name} removed successfully!`);
+      }
+    });
   };
 
   // 7. Reset Password
@@ -227,9 +279,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       })
       .eq('id', selectedUser.id);
 
-    if (error) alert('Error resetting password: ' + error.message);
-    else {
-      alert(`Password updated for user: @${selectedUser.username}`);
+    if (error) {
+      showToast('Error resetting password: ' + error.message, 'error');
+    } else {
+      showToast(`Password updated for user: @${selectedUser.username}!`);
       setResetPassValue('');
       setSelectedUser(null);
       setModalType(null);
@@ -250,9 +303,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       })
       .eq('id', currentUser.id);
 
-    if (error) alert('Error: ' + error.message);
-    else {
-      alert('Profile updated successfully!');
+    if (error) {
+      showToast('Error: ' + error.message, 'error');
+    } else {
+      showToast('Your profile has been updated!');
       if (onUserUpdate) onUserUpdate({ ...currentUser, name: profileForm.name, password_hash: profileForm.password });
       setModalType(null);
       setUserMenuOpen(false);
@@ -272,12 +326,78 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       })
       .eq('id', user.id);
 
-    if (error) alert('Error: ' + error.message);
+    if (error) showToast('Error: ' + error.message, 'error');
+    else showToast(`User @${user.username} status set to ${nextStatus ? 'Active' : 'Suspended'}`);
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col font-sans select-none">
       
+      {/* =========================================================================
+          CUSTOM FLOATING TOAST NOTIFICATION
+      ========================================================================== */}
+      {toast.open && (
+        <div className="fixed top-5 right-5 z-60 animate-in fade-in slide-in-from-top-4 duration-300">
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold ${
+            toast.type === 'error'
+              ? 'bg-rose-50 border-rose-200 text-rose-800'
+              : toast.type === 'warning'
+              ? 'bg-amber-50 border-amber-200 text-amber-800'
+              : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}>
+            {toast.type === 'error' ? (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            ) : toast.type === 'warning' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            ) : (
+              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+            )}
+            <span>{toast.message}</span>
+            <button
+              onClick={() => setToast({ open: false, message: '', type: 'success' })}
+              className="p-1 text-slate-400 hover:text-slate-600 ml-2"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          CUSTOM MODERN CONFIRMATION DIALOG
+      ========================================================================== */}
+      {confirmDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center shadow-inner">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            
+            <div className="space-y-1">
+              <h3 className="font-extrabold text-base text-slate-900">{confirmDialog.title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed px-2">{confirmDialog.message}</p>
+            </div>
+
+            <div className="flex gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDialog.onConfirm}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-600/20 transition cursor-pointer"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* =========================================================================
           1. ENTERPRISE HEADER
       ========================================================================== */}
@@ -945,8 +1065,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       
       {/* 1. Modal: Add Site */}
       {modalType === 'ADD_SITE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Create Operational Plant Site</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
@@ -993,8 +1113,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 2. Modal: Add Vehicle */}
       {modalType === 'ADD_VEHICLE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Register Master Vehicle</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
@@ -1057,8 +1177,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 3. Modal: Add User */}
       {modalType === 'ADD_USER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Create Staff User Account</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
@@ -1140,8 +1260,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 4. Modal: Edit User */}
       {modalType === 'EDIT_USER' && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Edit User Details</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
@@ -1199,7 +1319,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               </div>
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Save User</button>
+                <button type="submit" className="px-4 py-2 bg-[#0099ff] text-white font-bold rounded-xl shadow-md shadow-sky-500/20 cursor-pointer">Save Changes</button>
               </div>
             </form>
           </div>
@@ -1208,8 +1328,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 5. Modal: Add Driver */}
       {modalType === 'ADD_DRIVER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Add Commercial Driver</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
@@ -1267,8 +1387,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 6. Modal: Edit Driver */}
       {modalType === 'EDIT_DRIVER' && selectedDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Edit Commercial Driver</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
@@ -1322,8 +1442,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 7. Modal: Reset Password */}
       {modalType === 'RESET_PASS' && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex items-center gap-2 text-amber-600">
               <Key className="w-5 h-5" />
               <h3 className="font-bold text-base text-slate-900">Reset User Password</h3>
@@ -1352,8 +1472,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 8. Modal: Edit My Profile */}
       {modalType === 'EDIT_PROFILE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-bold text-base text-slate-900">Edit My Profile</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
