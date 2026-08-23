@@ -6,18 +6,23 @@ import { supabase } from './supabaseClient';
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
 
-  // Direct Exact 1:1 Live Login against Supabase 'app_users' table
+  // Live Login directly against Supabase 'app_users' table
   const handleLoginSuccess = async (username, password) => {
     try {
       const { data, error } = await supabase
         .from('app_users')
         .select('*')
-        .eq('username', username)
-        .eq('password_hash', password)
+        .eq('username', username.trim())
+        .eq('password_hash', password.trim())
         .maybeSingle();
 
-      if (error || !data) {
-        alert('Invalid Username or Password! Please check your credentials.');
+      if (error) {
+        alert('Supabase Error: ' + error.message);
+        return;
+      }
+
+      if (!data) {
+        alert('Invalid Username or Password! (No match found in app_users table)');
         return;
       }
 
@@ -41,12 +46,12 @@ export default function App() {
     setCurrentUser(updatedUserData);
   };
 
-  // View 1: Not Authenticated (Login Screen)
+  // View 1: Login Page
   if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // View 2: Super Admin / Main ERP Console
+  // View 2: Super Admin Dashboard
   return (
     <SuperAdminDashboard
       currentUser={currentUser}
