@@ -12,12 +12,11 @@ import {
   ShieldCheck,
   Wrench,
   Users,
-  KeyRound,
+  Key,
   BarChart3,
   History,
   LogOut,
   Plus,
-  Key,
   ChevronDown,
   CheckCircle2,
   Trash2,
@@ -25,14 +24,10 @@ import {
   AlertTriangle,
   X,
   Check,
-  AlertCircle,
-  Sparkles,
-  Layers,
-  CalendarAlert
+  AlertCircle
 } from 'lucide-react';
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
-  // Navigation State with LocalStorage Memory
   const [activeMenu, setActiveMenu] = useState(() => {
     return localStorage.getItem('buddy_tms_active_tab') || 'dashboard';
   });
@@ -67,7 +62,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [userForm, setUserForm] = useState({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
   const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
   const [resetPassValue, setResetPassValue] = useState('');
-  const [profileForm, setProfileForm] = useState({ name: currentUser.name, password: currentUser.password_hash });
+  const [profileForm, setProfileForm] = useState({ name: currentUser?.name || 'Admin', password: currentUser?.password_hash || '' });
 
   const showToast = (message, type = 'success') => {
     setToast({ open: true, message, type });
@@ -82,8 +77,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         module,
         action_type,
         description,
-        performed_by: currentUser.name,
-        performed_by_username: currentUser.username
+        performed_by: currentUser?.name || 'SuperAdmin',
+        performed_by_username: currentUser?.username || 'admin'
       }]);
     } catch (err) {
       console.error('Audit log error:', err);
@@ -121,7 +116,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     fetchAllData();
 
     const channel = supabase
-      .channel('realtime_buddy_tms')
+      .channel('realtime_buddy_tms_build')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => fetchAllData())
@@ -142,7 +137,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       name: siteForm.name,
       code: siteCode,
       state: siteForm.state,
-      created_by: currentUser.name
+      created_by: currentUser?.name || 'SuperAdmin'
     }]);
 
     if (error) {
@@ -164,7 +159,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       vehicle_type: vehicleForm.vehicle_type,
       capacity_mt: parseFloat(vehicleForm.capacity_mt),
       assigned_site: vehicleForm.assigned_site || null,
-      created_by: currentUser.name
+      created_by: currentUser?.name || 'SuperAdmin'
     }]);
 
     if (error) {
@@ -195,8 +190,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       branch: userForm.branch,
       site_access: userForm.site_access,
       permissions: defaultPermissions,
-      created_by: currentUser.name,
-      last_action_note: `Created by ${currentUser.name}`
+      created_by: currentUser?.name || 'SuperAdmin',
+      last_action_note: `Created by ${currentUser?.name || 'SuperAdmin'}`
     }]);
 
     if (error) {
@@ -221,8 +216,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         role: userForm.role,
         branch: userForm.branch,
         site_access: userForm.site_access,
-        updated_by: currentUser.name,
-        last_action_note: `Details updated by ${currentUser.name}`,
+        updated_by: currentUser?.name || 'SuperAdmin',
+        last_action_note: `Details updated by ${currentUser?.name || 'SuperAdmin'}`,
         updated_at: new Date().toISOString()
       })
       .eq('id', selectedUser.id);
@@ -239,7 +234,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
   // 5. Delete User
   const handleDeleteUser = (user) => {
-    if (user.id === currentUser.id) {
+    if (user.id === currentUser?.id) {
       showToast('You cannot delete your own logged-in administrator account.', 'error');
       return;
     }
@@ -270,7 +265,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       license_no: driverForm.license_no.toUpperCase().trim(),
       assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
       status: 'Active',
-      created_by: currentUser.name
+      created_by: currentUser?.name || 'SuperAdmin'
     }]);
 
     if (error) {
@@ -333,8 +328,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .from('app_users')
       .update({
         password_hash: resetPassValue,
-        updated_by: currentUser.name,
-        last_action_note: `Password reset by ${currentUser.name}`,
+        updated_by: currentUser?.name || 'SuperAdmin',
+        last_action_note: `Password reset by ${currentUser?.name || 'SuperAdmin'}`,
         updated_at: new Date().toISOString()
       })
       .eq('id', selectedUser.id);
@@ -358,11 +353,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .update({
         name: profileForm.name,
         password_hash: profileForm.password,
-        updated_by: currentUser.name,
+        updated_by: currentUser?.name || 'SuperAdmin',
         last_action_note: 'Self-profile details updated',
         updated_at: new Date().toISOString()
       })
-      .eq('id', currentUser.id);
+      .eq('id', currentUser?.id);
 
     if (error) {
       showToast('Error: ' + error.message, 'error');
@@ -382,8 +377,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .from('app_users')
       .update({
         is_active: nextStatus,
-        updated_by: currentUser.name,
-        last_action_note: `Status switched to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'} by ${currentUser.name}`,
+        updated_by: currentUser?.name || 'SuperAdmin',
+        last_action_note: `Status switched to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'} by ${currentUser?.name || 'SuperAdmin'}`,
         updated_at: new Date().toISOString()
       })
       .eq('id', user.id);
@@ -488,11 +483,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 className="flex items-center gap-3 bg-gradient-to-r from-slate-50 to-indigo-50/50 hover:from-slate-100 hover:to-indigo-100/50 p-1.5 pr-3 rounded-2xl border border-slate-200 transition cursor-pointer shadow-xs"
               >
                 <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
-                  {currentUser.name.charAt(0)}
+                  {currentUser?.name ? currentUser.name.charAt(0) : 'A'}
                 </div>
                 <div className="text-left hidden sm:block">
-                  <p className="text-xs font-bold text-slate-900 leading-tight">{currentUser.name}</p>
-                  <p className="text-[10px] text-indigo-600 font-extrabold">{currentUser.role}</p>
+                  <p className="text-xs font-bold text-slate-900 leading-tight">{currentUser?.name || 'Super Admin'}</p>
+                  <p className="text-[10px] text-indigo-600 font-extrabold">{currentUser?.role || 'SUPER_ADMIN'}</p>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
               </button>
@@ -500,8 +495,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               {userMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2">
                   <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-xs font-bold text-slate-900">{currentUser.name}</p>
-                    <p className="text-[11px] text-slate-400 font-mono">@{currentUser.username}</p>
+                    <p className="text-xs font-bold text-slate-900">{currentUser?.name || 'Super Admin'}</p>
+                    <p className="text-[11px] text-slate-400 font-mono">@{currentUser?.username || 'admin'}</p>
                   </div>
 
                   <button
@@ -538,10 +533,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       </header>
 
-      {/* 2. Main Body (Full 14-Module Sidebar + Content) */}
+      {/* 2. Main Body (Sidebar + Content) */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* Left Sidebar (Exact Final Architecture) */}
+        {/* Left Sidebar */}
         <aside className="w-68 bg-white border-r border-slate-200 flex flex-col justify-between p-3 shrink-0 shadow-xs overflow-y-auto">
           <div className="space-y-4">
             
@@ -734,7 +729,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <KeyRound className="w-4 h-4" />
+                <Key className="w-4 h-4" />
                 <span>Access & RBAC Matrix</span>
               </button>
 
@@ -789,7 +784,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* 4 Rich Vibrant Metric Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
                 <div className="bg-gradient-to-br from-blue-500 to-indigo-700 rounded-3xl p-5 text-white shadow-lg shadow-blue-500/20 relative overflow-hidden">
@@ -921,7 +915,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 2. SITE / PLANT MASTER */}
+          {/* 2. SITES MASTER */}
           {activeMenu === 'sites' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -979,7 +973,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 3. VEHICLE & FLEET */}
+          {/* 3. VEHICLES MASTER */}
           {activeMenu === 'vehicles' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1044,7 +1038,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 4. DRIVER DIRECTORY */}
+          {/* 4. DRIVERS MASTER */}
           {activeMenu === 'drivers' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1230,7 +1224,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 6. PLACEHOLDER VIEWS FOR REMAINING MODULES */}
+          {/* 6. PLACEHOLDER VIEWS */}
           {(['destinations', 'trips', 'finance', 'tyres', 'compliance', 'workshop', 'access', 'reports'].includes(activeMenu)) && (
             <div className="bg-white border border-slate-200 rounded-3xl p-12 text-center space-y-4 shadow-sm">
               <div className="w-16 h-16 rounded-3xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-inner">
@@ -1240,7 +1234,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 {activeMenu === 'tyres' && <Disc className="w-8 h-8" />}
                 {activeMenu === 'compliance' && <ShieldCheck className="w-8 h-8" />}
                 {activeMenu === 'workshop' && <Wrench className="w-8 h-8" />}
-                {activeMenu === 'access' && <KeyRound className="w-8 h-8" />}
+                {activeMenu === 'access' && <Key className="w-8 h-8" />}
                 {activeMenu === 'reports' && <BarChart3 className="w-8 h-8" />}
               </div>
               <div className="space-y-1">
