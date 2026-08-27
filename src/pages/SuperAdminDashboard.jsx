@@ -160,20 +160,54 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // Real-time Subscriptions
+  // Real-time Subscriptions (Sync Direct Payload)
   useEffect(() => {
     fetchAllData();
 
     const channel = supabase
-      .channel('realtime_buddy_fleets_main')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => fetchAllData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => fetchAllData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => fetchAllData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => fetchAllData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => {
-        fetchAllData();
-        setHasNewAuditPulse(true);
-        setTimeout(() => setHasNewAuditPulse(false), 2000);
+      .channel('buddy_fleets_realtime_stream')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setSites(prev => [payload.new, ...prev.filter(s => s.id !== payload.new.id)]);
+        } else if (payload.eventType === 'UPDATE') {
+          setSites(prev => prev.map(s => s.id === payload.new.id ? payload.new : s));
+        } else if (payload.eventType === 'DELETE') {
+          setSites(prev => prev.filter(s => s.id !== payload.old.id));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setUsers(prev => [payload.new, ...prev.filter(u => u.id !== payload.new.id)]);
+        } else if (payload.eventType === 'UPDATE') {
+          setUsers(prev => prev.map(u => u.id === payload.new.id ? payload.new : u));
+        } else if (payload.eventType === 'DELETE') {
+          setUsers(prev => prev.filter(u => u.id !== payload.old.id));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setVehicles(prev => [payload.new, ...prev.filter(v => v.id !== payload.new.id)]);
+        } else if (payload.eventType === 'UPDATE') {
+          setVehicles(prev => prev.map(v => v.id === payload.new.id ? payload.new : v));
+        } else if (payload.eventType === 'DELETE') {
+          setVehicles(prev => prev.filter(v => v.id !== payload.old.id));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setDrivers(prev => [payload.new, ...prev.filter(d => d.id !== payload.new.id)]);
+        } else if (payload.eventType === 'UPDATE') {
+          setDrivers(prev => prev.map(d => d.id === payload.new.id ? payload.new : d));
+        } else if (payload.eventType === 'DELETE') {
+          setDrivers(prev => prev.filter(d => d.id !== payload.old.id));
+        }
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setAuditLogs(prev => [payload.new, ...prev]);
+          setHasNewAuditPulse(true);
+          setTimeout(() => setHasNewAuditPulse(false), 2000);
+        }
       })
       .subscribe();
 
@@ -183,7 +217,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   }, [clientIp]);
 
   // ================= SITE MASTER LOGIC =================
-  // Auto-fill via Pincode
   const handleSitePincodeChange = async (e) => {
     const pin = e.target.value.replace(/\D/g, '').slice(0, 6);
     setSiteForm(prev => ({ ...prev, pincode: pin }));
@@ -202,13 +235,15 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 1. Create Site
+  // 1. Create Site (Instant Optimistic UI)
   const handleCreateSite = async (e) => {
     e.preventDefault();
     const siteCode = siteForm.site_code.toUpperCase().trim();
-    const { error } = await supabase.from('sites').insert([{
+    const newSitePayload = {
       name: siteForm.site_name.trim(),
+      site_name: siteForm.site_name.trim(),
       code: siteCode,
+      site_code: siteCode,
       plant_type: siteForm.plant_type,
       pincode: siteForm.pincode,
       state: siteForm.state,
@@ -217,19 +252,25 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       manager_name: siteForm.manager_name.trim(),
       manager_phone: siteForm.manager_phone.trim(),
       manager_email: siteForm.manager_email.trim(),
+      is_active: true,
       created_by: currentUser?.name || 'SuperAdmin'
-    }]);
+    };
+
+    const { data, error } = await supabase
+      .from('sites')
+      .insert([newSitePayload])
+      .select()
+      .single();
 
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteForm.site_name} (${siteCode}) at ${siteForm.district}, ${siteForm.state}`, {
-        site_name: siteForm.site_name,
-        code: siteCode,
-        plant_type: siteForm.plant_type,
-        district: siteForm.district,
-        state: siteForm.state
-      });
+      // Instant Live State Update
+      const savedItem = data || { ...newSitePayload, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+      setSites(prev => [savedItem, ...prev]);
+
+      await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteForm.site_name} (${siteCode}) at ${siteForm.district}, ${siteForm.state}`, newSitePayload);
+      
       setSiteForm({
         site_name: '',
         site_code: '',
@@ -247,31 +288,38 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 2. Update Site
+  // 2. Update Site (Instant UI Update)
   const handleUpdateSite = async (e) => {
     e.preventDefault();
     if (!selectedSite) return;
 
+    const updatedData = {
+      name: siteForm.site_name.trim(),
+      site_name: siteForm.site_name.trim(),
+      plant_type: siteForm.plant_type,
+      pincode: siteForm.pincode,
+      state: siteForm.state,
+      district: siteForm.district,
+      address: siteForm.address.trim(),
+      manager_name: siteForm.manager_name.trim(),
+      manager_phone: siteForm.manager_phone.trim(),
+      manager_email: siteForm.manager_email.trim(),
+      updated_at: new Date().toISOString()
+    };
+
+    // Instant local state update
+    setSites(prev => prev.map(s => s.id === selectedSite.id ? { ...s, ...updatedData } : s));
+
     const { error } = await supabase
       .from('sites')
-      .update({
-        name: siteForm.site_name.trim(),
-        plant_type: siteForm.plant_type,
-        pincode: siteForm.pincode,
-        state: siteForm.state,
-        district: siteForm.district,
-        address: siteForm.address.trim(),
-        manager_name: siteForm.manager_name.trim(),
-        manager_phone: siteForm.manager_phone.trim(),
-        manager_email: siteForm.manager_email.trim(),
-        updated_at: new Date().toISOString()
-      })
+      .update(updatedData)
       .eq('id', selectedSite.id);
 
     if (error) {
+      fetchAllData(); // Rollback on error
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('SITE', 'UPDATE', `Updated details for plant ${siteForm.site_name} (${selectedSite.code})`, {
+      await logAuditActivity('SITE', 'UPDATE', `Updated details for plant ${siteForm.site_name} (${selectedSite.code || selectedSite.site_code})`, {
         site_id: selectedSite.id,
         new_name: siteForm.site_name,
         new_district: siteForm.district,
@@ -283,15 +331,19 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 3. Delete Site
+  // 3. Delete Site (Instant UI Update)
   const handleDeleteSite = (site) => {
     setConfirmDialog({
       open: true,
       title: 'Delete Plant Site',
       message: `Are you sure you want to delete ${site.name || site.site_name} (${site.code || site.site_code})? This cannot be undone.`,
       onConfirm: async () => {
+        // Instant removal
+        setSites(prev => prev.filter(s => s.id !== site.id));
+
         const { error } = await supabase.from('sites').delete().eq('id', site.id);
         if (error) {
+          fetchAllData(); // Rollback
           showToast('Error deleting plant: ' + error.message, 'error');
         } else {
           await logAuditActivity('SITE', 'DELETE', `Deleted plant location ${site.name || site.site_name} (${site.code || site.site_code})`, {
@@ -306,9 +358,13 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     });
   };
 
-  // 4. Toggle Site Status
+  // 4. Toggle Site Status (Instant UI Switch)
   const handleToggleSiteStatus = async (site) => {
     const nextStatus = !site.is_active;
+
+    // Instant Toggle
+    setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: nextStatus } : s));
+
     const { error } = await supabase
       .from('sites')
       .update({
@@ -318,6 +374,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', site.id);
 
     if (error) {
+      setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: !nextStatus } : s)); // Rollback
       showToast('Error: ' + error.message, 'error');
     } else {
       await logAuditActivity('SITE', 'UPDATE', `Switched plant ${site.name || site.site_name} status to ${nextStatus ? 'OPERATIONAL' : 'INACTIVE'}`);
@@ -329,23 +386,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const handleCreateVehicle = async (e) => {
     e.preventDefault();
     const vehicleNo = vehicleForm.vehicle_no.toUpperCase().trim();
-    const { error } = await supabase.from('vehicles').insert([{
+    const newVehicle = {
       vehicle_no: vehicleNo,
       vehicle_type: vehicleForm.vehicle_type,
       capacity_mt: parseFloat(vehicleForm.capacity_mt),
       assigned_site: vehicleForm.assigned_site || null,
       created_by: currentUser?.name || 'SuperAdmin'
-    }]);
+    };
+
+    const { data, error } = await supabase.from('vehicles').insert([newVehicle]).select().single();
 
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('FLEET', 'CREATE', `Registered truck ${vehicleNo} (${vehicleForm.vehicle_type} - ${vehicleForm.capacity_mt} MT)`, {
-        vehicle_no: vehicleNo,
-        type: vehicleForm.vehicle_type,
-        capacity_mt: vehicleForm.capacity_mt,
-        site: vehicleForm.assigned_site
-      });
+      setVehicles(prev => [data || { ...newVehicle, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
+      await logAuditActivity('FLEET', 'CREATE', `Registered truck ${vehicleNo} (${vehicleForm.vehicle_type} - ${vehicleForm.capacity_mt} MT)`, newVehicle);
       setVehicleForm({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
       setModalType(null);
       showToast('Vehicle registered into fleet inventory!');
@@ -362,7 +417,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       : { canViewFinancials: false, canCreateLR: true, canEditLR: false, canManageFuel: true, canManageUsers: false };
 
     const cleanUser = userForm.username.trim();
-    const { error } = await supabase.from('app_users').insert([{
+    const newUserPayload = {
       username: cleanUser,
       password_hash: userForm.password_hash,
       name: userForm.name,
@@ -370,19 +425,18 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       branch: userForm.branch,
       site_access: userForm.site_access,
       permissions: defaultPermissions,
+      is_active: true,
       created_by: currentUser?.name || 'SuperAdmin',
       last_action_note: `Created by ${currentUser?.name || 'SuperAdmin'}`
-    }]);
+    };
+
+    const { data, error } = await supabase.from('app_users').insert([newUserPayload]).select().single();
 
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('USER', 'CREATE', `Provisioned account @${cleanUser} for ${userForm.name} (${userForm.role})`, {
-        username: cleanUser,
-        role: userForm.role,
-        branch: userForm.branch,
-        site_access: userForm.site_access
-      });
+      setUsers(prev => [data || { ...newUserPayload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
+      await logAuditActivity('USER', 'CREATE', `Provisioned account @${cleanUser} for ${userForm.name} (${userForm.role})`, newUserPayload);
       setUserForm({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
       setModalType(null);
       showToast(`User @${cleanUser} provisioned!`);
@@ -393,20 +447,25 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     e.preventDefault();
     if (!selectedUser) return;
 
+    const updatedUserObj = {
+      name: userForm.name,
+      role: userForm.role,
+      branch: userForm.branch,
+      site_access: userForm.site_access,
+      updated_by: currentUser?.name || 'SuperAdmin',
+      last_action_note: `Details updated by ${currentUser?.name || 'SuperAdmin'}`,
+      updated_at: new Date().toISOString()
+    };
+
+    setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, ...updatedUserObj } : u));
+
     const { error } = await supabase
       .from('app_users')
-      .update({
-        name: userForm.name,
-        role: userForm.role,
-        branch: userForm.branch,
-        site_access: userForm.site_access,
-        updated_by: currentUser?.name || 'SuperAdmin',
-        last_action_note: `Details updated by ${currentUser?.name || 'SuperAdmin'}`,
-        updated_at: new Date().toISOString()
-      })
+      .update(updatedUserObj)
       .eq('id', selectedUser.id);
 
     if (error) {
+      fetchAllData();
       showToast('Error: ' + error.message, 'error');
     } else {
       await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`, {
@@ -432,8 +491,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       title: 'Delete Staff User Account',
       message: `Are you sure you want to permanently delete user @${user.username} (${user.name})?`,
       onConfirm: async () => {
+        setUsers(prev => prev.filter(u => u.id !== user.id));
+
         const { error } = await supabase.from('app_users').delete().eq('id', user.id);
         if (error) {
+          fetchAllData();
           showToast('Error deleting user: ' + error.message, 'error');
         } else {
           await logAuditActivity('USER', 'DELETE', `Deleted staff account @${user.username} (${user.name})`, {
@@ -476,6 +538,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
   const handleToggleUserStatus = async (user) => {
     const nextStatus = !user.is_active;
+
+    // Instant UI Toggle
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: nextStatus } : u));
+
     const { error } = await supabase
       .from('app_users')
       .update({
@@ -487,6 +553,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', user.id);
 
     if (error) {
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: !nextStatus } : u));
       showToast('Error: ' + error.message, 'error');
     } else {
       await logAuditActivity('USER', 'UPDATE', `Changed @${user.username} account status to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'}`);
@@ -497,24 +564,22 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   // ================= DRIVER DIRECTORY LOGIC =================
   const handleCreateDriver = async (e) => {
     e.preventDefault();
-    const { error } = await supabase.from('drivers').insert([{
+    const newDriverPayload = {
       name: driverForm.name,
       phone: driverForm.phone,
       license_no: driverForm.license_no.toUpperCase().trim(),
       assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
       status: 'Active',
       created_by: currentUser?.name || 'SuperAdmin'
-    }]);
+    };
+
+    const { data, error } = await supabase.from('drivers').insert([newDriverPayload]).select().single();
 
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('DRIVER', 'CREATE', `Added commercial driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`, {
-        driver_name: driverForm.name,
-        phone: driverForm.phone,
-        license_no: driverForm.license_no.toUpperCase(),
-        assigned_vehicle: driverForm.assigned_vehicle
-      });
+      setDrivers(prev => [data || { ...newDriverPayload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
+      await logAuditActivity('DRIVER', 'CREATE', `Added commercial driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`, newDriverPayload);
       setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
       setModalType(null);
       showToast(`Driver ${driverForm.name} registered!`);
@@ -525,18 +590,23 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     e.preventDefault();
     if (!selectedDriver) return;
 
+    const updatedDriverPayload = {
+      name: driverForm.name,
+      phone: driverForm.phone,
+      license_no: driverForm.license_no.toUpperCase().trim(),
+      assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
+      status: driverForm.status
+    };
+
+    setDrivers(prev => prev.map(d => d.id === selectedDriver.id ? { ...d, ...updatedDriverPayload } : d));
+
     const { error } = await supabase
       .from('drivers')
-      .update({
-        name: driverForm.name,
-        phone: driverForm.phone,
-        license_no: driverForm.license_no.toUpperCase().trim(),
-        assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
-        status: driverForm.status
-      })
+      .update(updatedDriverPayload)
       .eq('id', selectedDriver.id);
 
     if (error) {
+      fetchAllData();
       showToast('Error: ' + error.message, 'error');
     } else {
       await logAuditActivity('DRIVER', 'UPDATE', `Updated driver ${driverForm.name} (DL: ${driverForm.license_no})`, {
@@ -558,8 +628,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       title: 'Remove Driver',
       message: `Are you sure you want to remove driver ${driver.name} (${driver.license_no})?`,
       onConfirm: async () => {
+        setDrivers(prev => prev.filter(d => d.id !== driver.id));
+
         const { error } = await supabase.from('drivers').delete().eq('id', driver.id);
         if (error) {
+          fetchAllData();
           showToast('Error deleting driver: ' + error.message, 'error');
         } else {
           await logAuditActivity('DRIVER', 'DELETE', `Deleted commercial driver ${driver.name} (DL: ${driver.license_no})`, {
@@ -1138,7 +1211,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 2. SITES MASTER (UPDATED WITH FULL PINCODE & CONTACTS) */}
+          {/* 2. SITES MASTER */}
           {activeMenu === 'sites' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
