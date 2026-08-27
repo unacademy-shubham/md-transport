@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
 import {
   LayoutDashboard,
@@ -31,7 +31,7 @@ import {
   Clock,
   Shield,
   Search,
-  ExternalLink
+  RotateCcw
 } from 'lucide-react';
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
@@ -77,12 +77,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [resetPassValue, setResetPassValue] = useState('');
   const [profileForm, setProfileForm] = useState({ name: currentUser?.name || 'Admin', password: currentUser?.password_hash || '' });
 
-  // 1. Fetch Client IP on Mount for Security Tracking
+  // 1. Fetch Client IP on Mount
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
       .then(res => res.json())
       .then(data => setClientIp(data.ip || '127.0.0.1'))
-      .catch(() => setClientIp('127.0.0.1 (Local)'));
+      .catch(() => setClientIp('127.0.0.1'));
   }, []);
 
   const showToast = (message, type = 'success') => {
@@ -92,7 +92,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }, 3500);
   };
 
-  // Helper: Log forensic level activity (7-days retained)
   const logAuditActivity = async (module, action_type, description, metadata = {}) => {
     try {
       await supabase.from('audit_logs').insert([{
@@ -102,7 +101,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         performed_by: currentUser?.name || 'SuperAdmin',
         performed_by_username: currentUser?.username || 'admin',
         ip_address: clientIp,
-        user_agent: navigator.userAgent || 'Unknown Browser',
+        user_agent: navigator.userAgent || 'Web Console Client',
         metadata: {
           ...metadata,
           timestamp_iso: new Date().toISOString(),
@@ -110,7 +109,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         }
       }]);
     } catch (err) {
-      console.error('Audit log insertion failed:', err);
+      console.error('Audit log error:', err);
     }
   };
 
@@ -133,7 +132,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           .select('*')
           .gte('created_at', sevenDaysAgo)
           .order('created_at', { ascending: false })
-          .limit(250)
+          .limit(300)
       ]);
 
       if (sitesRes.data) setSites(sitesRes.data);
@@ -151,13 +150,13 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     fetchAllData();
 
     const channel = supabase
-      .channel('realtime_buddy_fleets_audit_hub')
+      .channel('realtime_buddy_fleets_main')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => fetchAllData())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, (payload) => {
-        setAuditLogs(prev => [payload.new, ...prev]);
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => {
+        fetchAllData();
         setHasNewAuditPulse(true);
         setTimeout(() => setHasNewAuditPulse(false), 2000);
       })
@@ -216,7 +215,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       });
       setVehicleForm({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
       setModalType(null);
-      showToast('Vehicle registered in fleet inventory!');
+      showToast('Vehicle registered into fleet inventory!');
     }
   };
 
@@ -384,7 +383,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       onConfirm: async () => {
         const { error } = await supabase.from('drivers').delete().eq('id', driver.id);
         if (error) {
-          showToast('Error: ' + error.message, 'error');
+          showToast('Error deleting driver: ' + error.message, 'error');
         } else {
           await logAuditActivity('DRIVER', 'DELETE', `Deleted commercial driver ${driver.name} (DL: ${driver.license_no})`, {
             driver_id: driver.id,
@@ -398,7 +397,30 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     });
   };
 
-  // 7. Reset Password
+  // 7. Manual Clear All Audit Logs Function
+  const handleClearAllAuditLogs = () => {
+    setConfirmDialog({
+      open: true,
+      title: 'Flush All Audit Trail Records',
+      message: 'Are you sure you want to completely clear all system activity logs? This action cannot be undone.',
+      onConfirm: async () => {
+        const { error } = await supabase
+          .from('audit_logs')
+          .delete()
+          .neq('id', '00000000-0000-0000-0000-000000000000'); // delete all rows
+
+        if (error) {
+          showToast('Error clearing logs: ' + error.message, 'error');
+        } else {
+          setAuditLogs([]);
+          showToast('Audit trail logs cleared successfully!');
+        }
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+      }
+    });
+  };
+
+  // 8. Reset Password
   const handleResetPassword = async () => {
     if (!resetPassValue.trim() || !selectedUser) return;
     const { error } = await supabase
@@ -412,7 +434,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', selectedUser.id);
 
     if (error) {
-      showToast('Error: ' + error.message, 'error');
+      showToast('Error resetting password: ' + error.message, 'error');
     } else {
       await logAuditActivity('AUTH', 'PASSWORD_RESET', `Admin reset credentials for user @${selectedUser.username}`, {
         target_user: selectedUser.username,
@@ -425,7 +447,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 8. Update Self Profile
+  // 9. Update Self Profile
   const handleUpdateSelfProfile = async (e) => {
     e.preventDefault();
     const { error } = await supabase
@@ -450,7 +472,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 9. Toggle User Status
+  // 10. Toggle User Status
   const handleToggleUserStatus = async (user) => {
     const nextStatus = !user.is_active;
     const { error } = await supabase
@@ -542,18 +564,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 onClick={confirmDialog.onConfirm}
                 className="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-600/25 transition cursor-pointer"
               >
-                Yes, Delete
+                Yes, Confirm
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 1. Top Header (Dark & Colorful Theme) */}
+      {/* 1. Top Header */}
       <header className="bg-[#0f172a] border-b border-slate-800 sticky top-0 z-40 px-6 py-3 shadow-md">
         <div className="flex items-center justify-between w-full">
           
-          {/* Brand Logo & Name */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 text-white flex items-center justify-center font-black shadow-lg shadow-cyan-500/25 text-lg tracking-wider border border-white/10">
               BF
@@ -570,14 +591,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           </div>
 
-          {/* User Profile Section (Circular Avatar) */}
           <div className="relative flex items-center gap-3">
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className="flex items-center gap-3 bg-slate-800/80 hover:bg-slate-800 p-1.5 pr-3.5 rounded-full border border-slate-700/80 transition cursor-pointer shadow-sm"
               >
-                {/* Circular Profile Avatar */}
                 {currentUser?.photo_url ? (
                   <img
                     src={currentUser.photo_url}
@@ -638,10 +657,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       </header>
 
-      {/* 2. Main Body (Dark Sidebar + Bright Clean Workspace) */}
+      {/* 2. Main Body */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* Left Sidebar (No numbers/pills, Glowing Live Dot on Audit Trail) */}
+        {/* Left Sidebar */}
         <aside className="w-68 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3 shrink-0 shadow-lg overflow-y-auto">
           <div className="space-y-4 flex-1">
             
@@ -821,7 +840,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <span>Reports & MIS</span>
               </button>
 
-              {/* AUDIT TRAIL TAB WITH LIVE GLOWING GREEN DOT */}
               <button
                 onClick={() => handleMenuChange('audit-logs')}
                 className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
@@ -835,7 +853,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   <span>Audit Trail Logs</span>
                 </div>
                 
-                {/* Glowing Live Green Dot */}
                 <div className="flex items-center gap-1.5" title="Live Telemetry Listener Active">
                   <span className="relative flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -861,7 +878,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* 4 Rich Metric Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
                 <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-800 rounded-3xl p-5 text-white shadow-xl shadow-blue-500/15 relative overflow-hidden">
@@ -975,7 +991,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                           <div className="space-y-0.5">
                             <p className="font-bold text-slate-800 line-clamp-1">{log.description}</p>
                             <p className="text-slate-400 text-[10px]">
-                              By <span className="text-slate-700 font-semibold">{log.performed_by}</span> • IP: <span className="font-mono">{log.ip_address || '127.0.0.1'}</span>
+                              By <span className="text-slate-700 font-semibold">{log.performed_by}</span> • Public IP: <span className="font-mono">{log.ip_address || '127.0.0.1'}</span>
                             </p>
                           </div>
                           <button
@@ -1334,11 +1350,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 7. LIVE AUDIT TRAIL LOGS (SINGLE-LINE DENSE TABLE + VIEW DETAILS MODAL) */}
+          {/* 7. LIVE AUDIT TRAIL LOGS (WITH MANUAL CLEAR BUTTON) */}
           {activeMenu === 'audit-logs' && (
             <div className="space-y-4">
               
-              {/* Header & Filter Bar */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-black text-slate-900 flex items-center gap-2.5">
@@ -1349,20 +1364,32 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     </span>
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Sub-second immutable telemetry • Auto-purged after 7 days (Zero DB Bloat)
+                    Sub-second immutable telemetry • Auto-purged after 7 days
                   </p>
                 </div>
 
-                {/* Search Bar */}
-                <div className="relative w-full sm:w-72">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
-                  <input
-                    type="text"
-                    placeholder="Search logs by IP, User, Action..."
-                    value={auditSearch}
-                    onChange={(e) => setAuditSearch(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-3.5 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
-                  />
+                <div className="flex items-center gap-2.5 w-full sm:w-auto">
+                  {/* Search Bar */}
+                  <div className="relative flex-1 sm:w-64">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Search by IP, User, Action..."
+                      value={auditSearch}
+                      onChange={(e) => setAuditSearch(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-3.5 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Manual Clear All Logs Button */}
+                  <button
+                    onClick={handleClearAllAuditLogs}
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-2xl text-xs font-bold transition cursor-pointer shadow-xs shrink-0"
+                    title="Clear All Audit Trail History"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Clear Logs</span>
+                  </button>
                 </div>
               </div>
 
@@ -1374,7 +1401,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       <tr>
                         <th className="p-3.5">Timestamp (UTC)</th>
                         <th className="p-3.5">User Identity</th>
-                        <th className="p-3.5">IP Address</th>
+                        <th className="p-3.5">Public IP Address</th>
                         <th className="p-3.5">Module & Action</th>
                         <th className="p-3.5">Event Description (Single Line)</th>
                         <th className="p-3.5 text-right">Forensic Details</th>
@@ -1384,7 +1411,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       {filteredAuditLogs.length === 0 ? (
                         <tr>
                           <td colSpan="6" className="p-8 text-center text-slate-400">
-                            No telemetry logs found matching your filter within the last 7 days.
+                            No telemetry logs found. All logs are clean.
                           </td>
                         </tr>
                       ) : (
@@ -1495,9 +1522,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
                   <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase">
                     <Globe className="w-3.5 h-3.5" />
-                    <span>Network & Public IP</span>
+                    <span>Global Public IP</span>
                   </div>
-                  <p className="font-mono font-bold text-slate-900">{selectedAuditLog.ip_address || '127.0.0.1'}</p>
+                  <p className="font-mono font-extrabold text-blue-600">{selectedAuditLog.ip_address || '127.0.0.1'}</p>
                 </div>
 
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
