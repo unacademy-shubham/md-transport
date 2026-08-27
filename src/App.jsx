@@ -3,8 +3,8 @@ import Login from './pages/Login';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import { supabase } from './supabaseClient';
 
-const SESSION_KEY = 'md_transport_session';
-const ACTIVE_TAB_KEY = 'md_transport_active_tab';
+const SESSION_KEY = 'buddy_fleets_session';
+const ACTIVE_TAB_KEY = 'buddy_fleets_active_tab';
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 Minutes
 
 export default function App() {
@@ -12,19 +12,65 @@ export default function App() {
   const [isSessionLoading, setIsSessionLoading] = useState(true);
   const inactivityTimerRef = useRef(null);
 
-  // 1. Session clear & Logout
-  const handleLogout = useCallback(() => {
+  // Helper: Fetch Client Public IP
+  const getClientIp = async () => {
+    try {
+      const res = await fetch('https://api.ipify.org?format=json');
+      const data = await res.json();
+      return data.ip || '127.0.0.1';
+    } catch {
+      return '127.0.0.1';
+    }
+  };
+
+  // 1. Session Clear & Forensic Logout
+  const handleLogout = useCallback(async (isAutoTimeout = false) => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+
+    const savedSession = localStorage.getItem(SESSION_KEY);
+    let userToLog = currentUser;
+
+    if (!userToLog && savedSession) {
+      try {
+        const parsed = JSON.parse(savedSession);
+        userToLog = parsed.user;
+      } catch (e) {}
+    }
+
+    // Insert Live Forensic Logout Audit Log
+    if (userToLog) {
+      try {
+        const ip = await getClientIp();
+        await supabase.from('audit_logs').insert([{
+          module: 'AUTH',
+          action_type: isAutoTimeout ? 'TIMEOUT_LOGOUT' : 'LOGOUT',
+          description: isAutoTimeout
+            ? `User @${userToLog.username} (${userToLog.name}) auto-logged out due to 30 mins inactivity`
+            : `User @${userToLog.username} (${userToLog.name}) signed out securely`,
+          performed_by: userToLog.name,
+          performed_by_username: userToLog.username,
+          ip_address: ip,
+          user_agent: navigator.userAgent || 'Web Console Client',
+          metadata: {
+            role: userToLog.role,
+            reason: isAutoTimeout ? 'INACTIVITY_TIMEOUT_30M' : 'USER_TRIGGERED_SIGNOUT',
+            session_ended_at: new Date().toISOString()
+          }
+        }]);
+      } catch (err) {
+        console.error('Logout audit log error:', err);
+      }
+    }
+
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(ACTIVE_TAB_KEY);
     setCurrentUser(null);
-  }, []);
+  }, [currentUser]);
 
-  // 2. Reset Inactivity Timer on User Activity
+  // 2. Reset Inactivity Timer on User Interaction
   const resetInactivityTimer = useCallback(() => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
 
-    // Update last activity timestamp in localStorage
     const savedSession = localStorage.getItem(SESSION_KEY);
     if (savedSession) {
       try {
@@ -36,10 +82,9 @@ export default function App() {
       }
     }
 
-    // Set 30-minute auto-logout timer
+    // 30-minute auto-logout timer
     inactivityTimerRef.current = setTimeout(() => {
-      alert('Session expired due to 30 minutes of inactivity. Please login again.');
-      handleLogout();
+      handleLogout(true);
     }, INACTIVITY_TIMEOUT_MS);
   }, [handleLogout]);
 
@@ -53,6 +98,14 @@ export default function App() {
           const timeElapsed = Date.now() - lastActivity;
 
           if (timeElapsed < INACTIVITY_TIMEOUT_MS) {
+            // Root Admin Hardcoded fallback check
+            if (user.id === 'root-admin' || user.username === 'admin') {
+              setCurrentUser(user);
+              resetInactivityTimer();
+              setIsSessionLoading(false);
+              return;
+            }
+
             // Re-verify if user is still active in database
             const { data, error } = await supabase
               .from('app_users')
@@ -60,14 +113,14 @@ export default function App() {
               .eq('id', user.id)
               .maybeSingle();
 
-            if (!error && data && data.is_active) {
+            if (!error && data && data.is_active !== false) {
               setCurrentUser(data);
               resetInactivityTimer();
             } else {
               handleLogout();
             }
           } else {
-            handleLogout();
+            handleLogout(true);
           }
         }
       } catch (err) {
@@ -81,7 +134,7 @@ export default function App() {
     checkSavedSession();
   }, [handleLogout, resetInactivityTimer]);
 
-  // 4. Attach Activity Event Listeners (Mouse, Keypress, Touch, Scroll)
+  // 4. Attach Activity Event Listeners (Mouse, Keyboard, Touch, Scroll)
   useEffect(() => {
     if (!currentUser) return;
 
@@ -97,42 +150,15 @@ export default function App() {
     };
   }, [currentUser, resetInactivityTimer]);
 
-  // 5. Login Handler (Exact 1:1 Match)
-  const handleLoginSuccess = async (username, password) => {
-    try {
-      const { data, error } = await supabase
-        .from('app_users')
-        .select('*')
-        .eq('username', username.trim())
-        .eq('password_hash', password.trim())
-        .maybeSingle();
+  // 5. Login Handler
+  const handleLoginSuccess = (authenticatedUser) => {
+    // Save persistent session
+    localStorage.setItem(
+      SESSION_KEY,
+      JSON.stringify({ user: authenticatedUser, lastActivity: Date.now() })
+    );
 
-      if (error) {
-        alert('Supabase Error: ' + error.message);
-        return;
-      }
-
-      if (!data) {
-        alert('Invalid Username or Password! Please check your credentials.');
-        return;
-      }
-
-      if (!data.is_active) {
-        alert('This account has been deactivated.');
-        return;
-      }
-
-      // Save persistent session
-      localStorage.setItem(
-        SESSION_KEY,
-        JSON.stringify({ user: data, lastActivity: Date.now() })
-      );
-
-      setCurrentUser(data);
-    } catch (err) {
-      console.error('Login error:', err);
-      alert('Database connection error.');
-    }
+    setCurrentUser(authenticatedUser);
   };
 
   const handleUserUpdate = (updatedUserData) => {
@@ -146,10 +172,10 @@ export default function App() {
   // Loading Screen while restoring session
   if (isSessionLoading) {
     return (
-      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center font-sans">
+      <div className="min-h-screen bg-[#0f172a] flex items-center justify-center font-sans">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs font-bold text-slate-500">Restoring Secure Session...</p>
+          <div className="w-9 h-9 border-3 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-bold text-slate-400 tracking-wider">Restoring Secure Session...</p>
         </div>
       </div>
     );
@@ -164,7 +190,7 @@ export default function App() {
   return (
     <SuperAdminDashboard
       currentUser={currentUser}
-      onLogout={handleLogout}
+      onLogout={() => handleLogout(false)}
       onUserUpdate={handleUserUpdate}
     />
   );

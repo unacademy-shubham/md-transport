@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, KeyRound, Truck } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Truck, ShieldAlert } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState('');
@@ -7,26 +8,153 @@ export default function Login({ onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [forgotModal, setForgotModal] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e) => {
+  // Helper: Fetch Client Public IP
+  const getClientIp = async () => {
+    try {
+      const res = await fetch('https://api.ipify.org?format=json');
+      const data = await res.json();
+      return data.ip || '127.0.0.1';
+    } catch {
+      return '127.0.0.1';
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
 
-    if (!username.trim() || !password.trim()) {
+    const cleanUser = username.trim();
+    const cleanPass = password.trim();
+
+    if (!cleanUser || !cleanPass) {
       setErrorMessage('Please enter both username and password.');
       return;
     }
 
-    if (onLoginSuccess) {
-      onLoginSuccess(username, password);
+    setIsLoading(true);
+
+    try {
+      const ip = await getClientIp();
+
+      // Check Super Admin Fallback / Hardcoded Root Account
+      if (cleanUser === 'admin' && cleanPass === 'admin123') {
+        const rootUser = {
+          id: 'root-admin',
+          username: 'admin',
+          name: 'Buddy Computers',
+          role: 'SUPER_ADMIN',
+          branch: 'Head Office',
+          site_access: 'ALL',
+          password_hash: 'admin123'
+        };
+
+        // Live Forensic Audit Log Insert for Super Admin
+        await supabase.from('audit_logs').insert([{
+          module: 'AUTH',
+          action_type: 'LOGIN',
+          description: `Super Admin @${rootUser.username} authenticated successfully via Web Console`,
+          performed_by: rootUser.name,
+          performed_by_username: rootUser.username,
+          ip_address: ip,
+          user_agent: navigator.userAgent || 'Web Console Client',
+          metadata: {
+            auth_method: 'ROOT_DIRECT',
+            role: rootUser.role,
+            screen: `${window.screen.width}x${window.screen.height}`
+          }
+        }]);
+
+        if (onLoginSuccess) {
+          onLoginSuccess(rootUser);
+        }
+        return;
+      }
+
+      // Query Staff Database Users
+      const { data: dbUser, error } = await supabase
+        .from('app_users')
+        .select('*')
+        .eq('username', cleanUser)
+        .single();
+
+      if (error || !dbUser) {
+        // Failed Login Forensic Log
+        await supabase.from('audit_logs').insert([{
+          module: 'AUTH',
+          action_type: 'FAILED_LOGIN',
+          description: `Failed login attempt for username: @${cleanUser}`,
+          performed_by: cleanUser,
+          performed_by_username: cleanUser,
+          ip_address: ip,
+          user_agent: navigator.userAgent,
+          metadata: { reason: 'User does not exist', attempt_time: new Date().toISOString() }
+        }]);
+
+        setErrorMessage('Invalid username or password.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Check Account Status
+      if (dbUser.is_active === false) {
+        setErrorMessage('This account is suspended. Contact system administrator.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Check Password
+      if (dbUser.password_hash !== cleanPass) {
+        // Failed Password Forensic Log
+        await supabase.from('audit_logs').insert([{
+          module: 'AUTH',
+          action_type: 'FAILED_LOGIN',
+          description: `Incorrect password attempt on account: @${cleanUser}`,
+          performed_by: dbUser.name,
+          performed_by_username: cleanUser,
+          ip_address: ip,
+          user_agent: navigator.userAgent,
+          metadata: { reason: 'Incorrect Password Hash', role: dbUser.role }
+        }]);
+
+        setErrorMessage('Invalid username or password.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Live Forensic Audit Log Insert for Staff User
+      await supabase.from('audit_logs').insert([{
+        module: 'AUTH',
+        action_type: 'LOGIN',
+        description: `User @${dbUser.username} (${dbUser.name}) logged into system session`,
+        performed_by: dbUser.name,
+        performed_by_username: dbUser.username,
+        ip_address: ip,
+        user_agent: navigator.userAgent || 'Web Console Client',
+        metadata: {
+          role: dbUser.role,
+          branch: dbUser.branch || 'Head Office',
+          site_access: dbUser.site_access || 'ALL',
+          screen: `${window.screen.width}x${window.screen.height}`
+        }
+      }]);
+
+      if (onLoginSuccess) {
+        onLoginSuccess(dbUser);
+      }
+    } catch (err) {
+      console.error('Login process error:', err);
+      setErrorMessage('Authentication server connection error. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="relative min-h-screen w-full flex flex-col justify-between items-center bg-[#050505] overflow-hidden font-sans select-none">
 
-      {/* =========================================
-          CINEMATIC LOCAL TRUCK BACKGROUND (BRIGHT & CRISP)
-      ========================================== */}
+      {/* Cinematic Truck Background */}
       <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-105"
         style={{
@@ -38,77 +166,75 @@ export default function Login({ onLoginSuccess }) {
       {/* Light Clean Overlay */}
       <div className="absolute inset-0 bg-black/20 pointer-events-none" />
 
-      {/* Bottom subtle shadow for footer readability */}
+      {/* Bottom Subtle Shadow */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent pointer-events-none" />
 
-      {/* =========================================
-          TOP SPACING
-      ========================================== */}
+      {/* Top Spacing */}
       <div className="w-full h-8 relative z-10"></div>
 
-      {/* =========================================
-          LOGIN CARD
-      ========================================== */}
+      {/* Login Card */}
       <div className="relative z-10 w-full max-w-[420px] px-4">
 
-        <div className="bg-white rounded-2xl p-8 sm:p-10 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.9)] border border-white/40 space-y-6">
+        <div className="bg-white rounded-3xl p-8 sm:p-10 shadow-[0_30px_70px_-15px_rgba(0,0,0,0.9)] border border-white/40 space-y-6">
 
-          {/* Header with Custom Logistics Logo */}
+          {/* Header with Buddy Fleets Logo */}
           <div className="flex items-center justify-center gap-3">
-            <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-[#0088e6] to-[#00b4d8] text-white flex items-center justify-center shadow-lg shadow-sky-500/25 border border-sky-300/40">
-              <Truck className="w-6 h-6 stroke-[2.2]" />
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/25 border border-white/20 font-black text-lg">
+              BF
             </div>
             <div className="text-left">
-              <h1 className="text-2xl font-black text-slate-800 tracking-tight leading-none">
-                MD Transport
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none">
+                Buddy Fleets
               </h1>
-              <p className="text-[10px] font-bold text-sky-600 tracking-wider uppercase mt-1">
-                Fleet Management Portal
+              <p className="text-[10px] font-bold text-cyan-600 tracking-wider uppercase mt-1">
+                Transport Management System
               </p>
             </div>
           </div>
 
           {/* Error Message */}
           {errorMessage && (
-            <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 text-xs font-semibold text-center shadow-sm">
-              {errorMessage}
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs font-semibold text-center shadow-xs flex items-center justify-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
             </div>
           )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4 text-xs">
 
-            {/* Username with High Visibility Border & Shadow */}
+            {/* Username */}
             <div>
               <label className="text-slate-700 font-bold block mb-1.5 pl-0.5">
-                Username / Email
+                Username / System ID
               </label>
 
               <input
                 type="text"
                 required
-                placeholder="Enter username or email"
+                disabled={isLoading}
+                placeholder="e.g. admin or site_executive"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-[#f8fafc] border border-slate-200 hover:border-slate-300 rounded-xl px-4 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/20 transition-all font-medium shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]"
+                className="w-full bg-[#f8fafc] border border-slate-200 hover:border-slate-300 rounded-xl px-4 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all font-medium shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]"
               />
             </div>
 
-            {/* Password with High Visibility Border & Shadow */}
+            {/* Password */}
             <div>
               <label className="text-slate-700 font-bold block mb-1.5 pl-0.5">
                 Password
               </label>
 
               <div className="relative">
-
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
+                  disabled={isLoading}
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#f8fafc] border border-slate-200 hover:border-slate-300 rounded-xl pl-4 pr-11 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-sky-500 focus:bg-white focus:ring-2 focus:ring-sky-500/20 transition-all font-medium shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]"
+                  className="w-full bg-[#f8fafc] border border-slate-200 hover:border-slate-300 rounded-xl pl-4 pr-11 py-3 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all font-medium shadow-[inset_0_1px_2px_rgba(0,0,0,0.04)]"
                 />
 
                 <button
@@ -122,44 +248,37 @@ export default function Login({ onLoginSuccess }) {
                     <Eye className="w-4 h-4" />
                   )}
                 </button>
-
               </div>
             </div>
 
             {/* Login Button */}
             <div className="pt-2">
-
               <button
                 type="submit"
-                className="w-full py-3.5 bg-[#0099ff] hover:bg-[#0088e6] text-white font-bold rounded-xl text-xs tracking-wide transition shadow-lg shadow-[#0099ff]/30 active:scale-[0.98] cursor-pointer"
+                disabled={isLoading}
+                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl text-xs tracking-wide transition shadow-lg shadow-blue-500/30 active:scale-[0.98] cursor-pointer disabled:opacity-50"
               >
-                Login
+                {isLoading ? 'Verifying Session & Telemetry...' : 'Access Console'}
               </button>
-
             </div>
 
             {/* Forgot Password */}
-            <div className="text-center pt-1.5">
-
+            <div className="text-center pt-1">
               <button
                 type="button"
                 onClick={() => setForgotModal(true)}
-                className="text-xs text-[#0099ff] hover:text-[#007acc] hover:underline font-bold transition cursor-pointer"
+                className="text-xs text-blue-600 hover:text-blue-700 hover:underline font-bold transition cursor-pointer"
               >
                 Forgot Password?
               </button>
-
             </div>
 
           </form>
         </div>
       </div>
 
-      {/* =========================================
-          FOOTER
-      ========================================== */}
+      {/* Footer */}
       <footer className="relative z-10 w-full pb-6 pt-4 text-center">
-
         <p className="text-[11px] text-white/70 font-medium tracking-wide">
           Copyright by{' '}
           <span className="font-bold text-white uppercase tracking-wider">
@@ -170,37 +289,29 @@ export default function Login({ onLoginSuccess }) {
 
         <p className="text-[10px] text-white/50 mt-1 uppercase tracking-[0.1em]">
           Designed by{' '}
-
           <a
             href="https://www.instagram.com/happiest_banda"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-bold text-sky-400 hover:text-sky-300 transition-colors underline underline-offset-4 decoration-sky-400/40 hover:decoration-sky-300"
+            className="font-bold text-cyan-400 hover:text-cyan-300 transition-colors underline underline-offset-4 decoration-cyan-400/40 hover:decoration-cyan-300"
           >
             SHUBHAM JANGIR
           </a>
-
         </p>
-
       </footer>
 
-      {/* =========================================
-          FORGOT PASSWORD MODAL
-      ========================================== */}
+      {/* Forgot Password Modal */}
       {forgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-
-          <div className="w-full max-w-sm bg-white rounded-2xl p-6 shadow-2xl text-center space-y-4">
-
-            <div className="w-11 h-11 bg-sky-50 text-[#0099ff] rounded-2xl flex items-center justify-center mx-auto">
-              <KeyRound className="w-5 h-5" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-white rounded-3xl p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+              <KeyRound className="w-6 h-6" />
             </div>
 
             <div>
-              <h3 className="text-base font-bold text-slate-800">
+              <h3 className="text-base font-bold text-slate-900">
                 Forgot Password?
               </h3>
-
               <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
                 Contact your Head Office dispatch manager or system administrator
                 to reset your login credentials.
@@ -213,9 +324,7 @@ export default function Login({ onLoginSuccess }) {
             >
               Close
             </button>
-
           </div>
-
         </div>
       )}
 
