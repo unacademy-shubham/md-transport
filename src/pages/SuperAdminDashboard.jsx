@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 import {
   LayoutDashboard,
@@ -24,11 +24,17 @@ import {
   AlertTriangle,
   X,
   Check,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  Globe,
+  Monitor,
+  Clock,
+  Shield,
+  Search,
+  ExternalLink
 } from 'lucide-react';
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
-  // Navigation State with LocalStorage Memory
   const [activeMenu, setActiveMenu] = useState(() => {
     return localStorage.getItem('buddy_fleets_active_tab') || 'dashboard';
   });
@@ -40,6 +46,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+
+  // Forensic Audit States
+  const [selectedAuditLog, setSelectedAuditLog] = useState(null);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [clientIp, setClientIp] = useState('Fetching...');
+  const [hasNewAuditPulse, setHasNewAuditPulse] = useState(false);
 
   // Modals & UI States
   const [modalType, setModalType] = useState(null); 
@@ -65,6 +77,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [resetPassValue, setResetPassValue] = useState('');
   const [profileForm, setProfileForm] = useState({ name: currentUser?.name || 'Admin', password: currentUser?.password_hash || '' });
 
+  // 1. Fetch Client IP on Mount for Security Tracking
+  useEffect(() => {
+    fetch('https://api.ipify.org?format=json')
+      .then(res => res.json())
+      .then(data => setClientIp(data.ip || '127.0.0.1'))
+      .catch(() => setClientIp('127.0.0.1 (Local)'));
+  }, []);
+
   const showToast = (message, type = 'success') => {
     setToast({ open: true, message, type });
     setTimeout(() => {
@@ -72,17 +92,25 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }, 3500);
   };
 
-  const logAuditActivity = async (module, action_type, description) => {
+  // Helper: Log forensic level activity (7-days retained)
+  const logAuditActivity = async (module, action_type, description, metadata = {}) => {
     try {
       await supabase.from('audit_logs').insert([{
         module,
         action_type,
         description,
         performed_by: currentUser?.name || 'SuperAdmin',
-        performed_by_username: currentUser?.username || 'admin'
+        performed_by_username: currentUser?.username || 'admin',
+        ip_address: clientIp,
+        user_agent: navigator.userAgent || 'Unknown Browser',
+        metadata: {
+          ...metadata,
+          timestamp_iso: new Date().toISOString(),
+          screen_resolution: `${window.screen.width}x${window.screen.height}`
+        }
       }]);
     } catch (err) {
-      console.error('Audit log error:', err);
+      console.error('Audit log insertion failed:', err);
     }
   };
 
@@ -91,15 +119,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     localStorage.setItem('buddy_fleets_active_tab', menu);
   };
 
-  // Fetch Live Data
+  // Fetch Live Data (Strict 7-Day Window for Audit Logs)
   const fetchAllData = async () => {
     try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
       const [sitesRes, usersRes, vehiclesRes, driversRes, logsRes] = await Promise.all([
         supabase.from('sites').select('*').order('created_at', { ascending: false }),
         supabase.from('app_users').select('*').order('created_at', { ascending: false }),
         supabase.from('vehicles').select('*').order('created_at', { ascending: false }),
         supabase.from('drivers').select('*').order('created_at', { ascending: false }),
-        supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(100)
+        supabase.from('audit_logs')
+          .select('*')
+          .gte('created_at', sevenDaysAgo)
+          .order('created_at', { ascending: false })
+          .limit(250)
       ]);
 
       if (sitesRes.data) setSites(sitesRes.data);
@@ -108,27 +142,31 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       if (driversRes.data) setDrivers(driversRes.data);
       if (logsRes.data) setAuditLogs(logsRes.data);
     } catch (err) {
-      console.error('Error fetching data:', err);
+      console.error('Data fetch error:', err);
     }
   };
 
-  // Sub-second Realtime WebSockets
+  // Real-time Subscriptions
   useEffect(() => {
     fetchAllData();
 
     const channel = supabase
-      .channel('realtime_buddy_fleets_stream')
+      .channel('realtime_buddy_fleets_audit_hub')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'drivers' }, () => fetchAllData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'audit_logs' }, () => fetchAllData())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, (payload) => {
+        setAuditLogs(prev => [payload.new, ...prev]);
+        setHasNewAuditPulse(true);
+        setTimeout(() => setHasNewAuditPulse(false), 2000);
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [clientIp]);
 
   // 1. Create Site
   const handleCreateSite = async (e) => {
@@ -142,9 +180,13 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }]);
 
     if (error) {
-      showToast('Error creating site: ' + error.message, 'error');
+      showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('SITE', 'CREATE', `Created plant site ${siteForm.name} (${siteCode})`);
+      await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteForm.name} (${siteCode})`, {
+        site_name: siteForm.name,
+        code: siteCode,
+        state: siteForm.state
+      });
       setSiteForm({ name: '', code: '', state: '' });
       setModalType(null);
       showToast('Plant site created successfully!');
@@ -164,12 +206,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }]);
 
     if (error) {
-      showToast('Error adding vehicle: ' + error.message, 'error');
+      showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('FLEET', 'CREATE', `Registered vehicle ${vehicleNo} (${vehicleForm.vehicle_type} - ${vehicleForm.capacity_mt} MT)`);
+      await logAuditActivity('FLEET', 'CREATE', `Registered truck ${vehicleNo} (${vehicleForm.vehicle_type} - ${vehicleForm.capacity_mt} MT)`, {
+        vehicle_no: vehicleNo,
+        type: vehicleForm.vehicle_type,
+        capacity_mt: vehicleForm.capacity_mt,
+        site: vehicleForm.assigned_site
+      });
       setVehicleForm({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
       setModalType(null);
-      showToast('Vehicle registered into fleet inventory!');
+      showToast('Vehicle registered in fleet inventory!');
     }
   };
 
@@ -196,12 +243,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }]);
 
     if (error) {
-      showToast('Error creating user: ' + error.message, 'error');
+      showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('USER', 'CREATE', `Provisioned user @${cleanUser} for ${userForm.name} (${userForm.role})`);
+      await logAuditActivity('USER', 'CREATE', `Provisioned account @${cleanUser} for ${userForm.name} (${userForm.role})`, {
+        username: cleanUser,
+        role: userForm.role,
+        branch: userForm.branch,
+        site_access: userForm.site_access
+      });
       setUserForm({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
       setModalType(null);
-      showToast(`User @${cleanUser} created successfully!`);
+      showToast(`User @${cleanUser} provisioned!`);
     }
   };
 
@@ -224,9 +276,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', selectedUser.id);
 
     if (error) {
-      showToast('Error updating user: ' + error.message, 'error');
+      showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`);
+      await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`, {
+        user_id: selectedUser.id,
+        new_name: userForm.name,
+        new_role: userForm.role,
+        new_branch: userForm.branch
+      });
       setModalType(null);
       setSelectedUser(null);
       showToast('User details updated!');
@@ -249,7 +306,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         if (error) {
           showToast('Error deleting user: ' + error.message, 'error');
         } else {
-          await logAuditActivity('USER', 'DELETE', `Deleted user account @${user.username} (${user.name})`);
+          await logAuditActivity('USER', 'DELETE', `Deleted staff account @${user.username} (${user.name})`, {
+            deleted_user_id: user.id,
+            name: user.name,
+            role: user.role
+          });
           showToast(`User @${user.username} deleted successfully!`);
         }
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -270,12 +331,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }]);
 
     if (error) {
-      showToast('Error adding driver: ' + error.message, 'error');
+      showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('DRIVER', 'CREATE', `Added driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`);
+      await logAuditActivity('DRIVER', 'CREATE', `Added commercial driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`, {
+        driver_name: driverForm.name,
+        phone: driverForm.phone,
+        license_no: driverForm.license_no.toUpperCase(),
+        assigned_vehicle: driverForm.assigned_vehicle
+      });
       setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
       setModalType(null);
-      showToast(`Driver ${driverForm.name} added successfully!`);
+      showToast(`Driver ${driverForm.name} registered!`);
     }
   };
 
@@ -295,9 +361,15 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', selectedDriver.id);
 
     if (error) {
-      showToast('Error updating driver: ' + error.message, 'error');
+      showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('DRIVER', 'UPDATE', `Updated driver ${driverForm.name} (DL: ${driverForm.license_no})`);
+      await logAuditActivity('DRIVER', 'UPDATE', `Updated driver ${driverForm.name} (DL: ${driverForm.license_no})`, {
+        driver_id: selectedDriver.id,
+        name: driverForm.name,
+        phone: driverForm.phone,
+        license_no: driverForm.license_no,
+        assigned_vehicle: driverForm.assigned_vehicle
+      });
       setModalType(null);
       setSelectedDriver(null);
       showToast('Driver details updated!');
@@ -307,14 +379,18 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const handleDeleteDriver = (driver) => {
     setConfirmDialog({
       open: true,
-      title: 'Remove Commercial Driver',
+      title: 'Remove Driver',
       message: `Are you sure you want to remove driver ${driver.name} (${driver.license_no})?`,
       onConfirm: async () => {
         const { error } = await supabase.from('drivers').delete().eq('id', driver.id);
         if (error) {
-          showToast('Error deleting driver: ' + error.message, 'error');
+          showToast('Error: ' + error.message, 'error');
         } else {
-          await logAuditActivity('DRIVER', 'DELETE', `Removed driver ${driver.name} (DL: ${driver.license_no})`);
+          await logAuditActivity('DRIVER', 'DELETE', `Deleted commercial driver ${driver.name} (DL: ${driver.license_no})`, {
+            driver_id: driver.id,
+            name: driver.name,
+            license_no: driver.license_no
+          });
           showToast(`Driver ${driver.name} removed successfully!`);
         }
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -336,9 +412,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', selectedUser.id);
 
     if (error) {
-      showToast('Error resetting password: ' + error.message, 'error');
+      showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('AUTH', 'PASSWORD_RESET', `Reset password for @${selectedUser.username}`);
+      await logAuditActivity('AUTH', 'PASSWORD_RESET', `Admin reset credentials for user @${selectedUser.username}`, {
+        target_user: selectedUser.username,
+        reset_by: currentUser?.username
+      });
       showToast(`Password updated for user: @${selectedUser.username}!`);
       setResetPassValue('');
       setSelectedUser(null);
@@ -363,7 +442,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('USER', 'UPDATE', `Admin updated personal profile`);
+      await logAuditActivity('USER', 'UPDATE', `Super Admin updated personal root profile`);
       showToast('Your profile has been updated!');
       if (onUserUpdate) onUserUpdate({ ...currentUser, name: profileForm.name, password_hash: profileForm.password });
       setModalType(null);
@@ -387,13 +466,27 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('USER', 'UPDATE', `Changed @${user.username} status to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'}`);
+      await logAuditActivity('USER', 'UPDATE', `Changed @${user.username} account status to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'}`);
       showToast(`User @${user.username} set to ${nextStatus ? 'Active' : 'Suspended'}`);
     }
   };
 
+  // Filtered Audit Logs
+  const filteredAuditLogs = auditLogs.filter(log => {
+    if (!auditSearch.trim()) return true;
+    const query = auditSearch.toLowerCase();
+    return (
+      log.description?.toLowerCase().includes(query) ||
+      log.performed_by?.toLowerCase().includes(query) ||
+      log.performed_by_username?.toLowerCase().includes(query) ||
+      log.action_type?.toLowerCase().includes(query) ||
+      log.module?.toLowerCase().includes(query) ||
+      log.ip_address?.includes(query)
+    );
+  });
+
   return (
-    <div className="min-h-screen bg-[#f1f5f9] text-slate-800 flex flex-col font-sans select-none">
+    <div className="min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col font-sans select-none">
       
       {/* Toast Notification */}
       {toast.open && (
@@ -425,7 +518,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* Confirmation Modal */}
       {confirmDialog.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-200">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center shadow-inner">
               <AlertTriangle className="w-6 h-6" />
@@ -545,10 +638,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       </header>
 
-      {/* 2. Main Body (Dark Sidebar + Bright Contrast Workspace) */}
+      {/* 2. Main Body (Dark Sidebar + Bright Clean Workspace) */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* Left Sidebar (Dark Colorful Theme, No Bottom Box) */}
+        {/* Left Sidebar (No numbers/pills, Glowing Live Dot on Audit Trail) */}
         <aside className="w-68 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3 shrink-0 shadow-lg overflow-y-auto">
           <div className="space-y-4 flex-1">
             
@@ -572,83 +665,62 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
               <button
                 onClick={() => handleMenuChange('sites')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'sites' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Building2 className={`w-4 h-4 ${activeMenu === 'sites' ? 'text-white' : 'text-indigo-400'}`} />
-                  <span>Site / Plant Master</span>
-                </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'sites' ? 'bg-white/20 text-white' : 'bg-slate-800 text-cyan-400 border border-slate-700'}`}>
-                  {sites.length}
-                </span>
+                <Building2 className={`w-4 h-4 ${activeMenu === 'sites' ? 'text-white' : 'text-indigo-400'}`} />
+                <span>Site / Plant Master</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('destinations')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'destinations' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <MapPin className={`w-4 h-4 ${activeMenu === 'destinations' ? 'text-white' : 'text-amber-400'}`} />
-                  <span>Destination Hubs</span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">Hubs</span>
+                <MapPin className={`w-4 h-4 ${activeMenu === 'destinations' ? 'text-white' : 'text-amber-400'}`} />
+                <span>Destination Hubs</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('vehicles')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'vehicles' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Truck className={`w-4 h-4 ${activeMenu === 'vehicles' ? 'text-white' : 'text-emerald-400'}`} />
-                  <span>Vehicle & Fleet</span>
-                </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'vehicles' ? 'bg-white/20 text-white' : 'bg-slate-800 text-emerald-400 border border-slate-700'}`}>
-                  {vehicles.length}
-                </span>
+                <Truck className={`w-4 h-4 ${activeMenu === 'vehicles' ? 'text-white' : 'text-emerald-400'}`} />
+                <span>Vehicle & Fleet</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('drivers')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'drivers' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <UserCheck className={`w-4 h-4 ${activeMenu === 'drivers' ? 'text-white' : 'text-purple-400'}`} />
-                  <span>Driver Directory</span>
-                </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'drivers' ? 'bg-white/20 text-white' : 'bg-slate-800 text-purple-400 border border-slate-700'}`}>
-                  {drivers.length}
-                </span>
+                <UserCheck className={`w-4 h-4 ${activeMenu === 'drivers' ? 'text-white' : 'text-purple-400'}`} />
+                <span>Driver Directory</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('trips')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'trips' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <FileText className={`w-4 h-4 ${activeMenu === 'trips' ? 'text-white' : 'text-cyan-400'}`} />
-                  <span>Trip & LR Register</span>
-                </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Live</span>
+                <FileText className={`w-4 h-4 ${activeMenu === 'trips' ? 'text-white' : 'text-cyan-400'}`} />
+                <span>Trip & LR Register</span>
               </button>
             </div>
 
@@ -684,17 +756,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
               <button
                 onClick={() => handleMenuChange('compliance')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'compliance' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <ShieldCheck className={`w-4 h-4 ${activeMenu === 'compliance' ? 'text-white' : 'text-rose-400'}`} />
-                  <span>Vehicle Compliance</span>
-                </div>
-                <span className="text-[9px] px-1.5 py-0.5 rounded font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/30">Alerts</span>
+                <ShieldCheck className={`w-4 h-4 ${activeMenu === 'compliance' ? 'text-white' : 'text-rose-400'}`} />
+                <span>Vehicle Compliance</span>
               </button>
 
               <button
@@ -718,19 +787,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
               <button
                 onClick={() => handleMenuChange('users')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'users' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <Users className={`w-4 h-4 ${activeMenu === 'users' ? 'text-white' : 'text-purple-400'}`} />
-                  <span>User & Staff Accounts</span>
-                </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'users' ? 'bg-white/20 text-white' : 'bg-slate-800 text-purple-400 border border-slate-700'}`}>
-                  {users.length}
-                </span>
+                <Users className={`w-4 h-4 ${activeMenu === 'users' ? 'text-white' : 'text-purple-400'}`} />
+                <span>User & Staff Accounts</span>
               </button>
 
               <button
@@ -757,9 +821,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <span>Reports & MIS</span>
               </button>
 
+              {/* AUDIT TRAIL TAB WITH LIVE GLOWING GREEN DOT */}
               <button
                 onClick={() => handleMenuChange('audit-logs')}
-                className={`w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'audit-logs' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
@@ -769,16 +834,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   <History className={`w-4 h-4 ${activeMenu === 'audit-logs' ? 'text-white' : 'text-sky-400'}`} />
                   <span>Audit Trail Logs</span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'audit-logs' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
-                  {auditLogs.length}
-                </span>
+                
+                {/* Glowing Live Green Dot */}
+                <div className="flex items-center gap-1.5" title="Live Telemetry Listener Active">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${hasNewAuditPulse ? 'bg-cyan-300 scale-125 transition-transform' : 'bg-emerald-500'}`}></span>
+                  </span>
+                </div>
               </button>
             </div>
 
           </div>
         </aside>
 
-        {/* Dynamic Workspace (Clean White Background for Sharp Contrast) */}
+        {/* Dynamic Workspace */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
           {/* 1. DASHBOARD OVERVIEW */}
@@ -888,11 +958,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-sm">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                      <h3 className="text-sm font-extrabold text-slate-900">Recent Audit Telemetry</h3>
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      <h3 className="text-sm font-extrabold text-slate-900">Recent Live Security Telemetry</h3>
                     </div>
                     <button onClick={() => handleMenuChange('audit-logs')} className="text-xs text-blue-600 font-bold hover:underline cursor-pointer">
-                      Full Log →
+                      Full Log (7-Days) →
                     </button>
                   </div>
 
@@ -904,15 +974,16 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                         <div key={log.id} className="py-3 flex justify-between items-center text-xs">
                           <div className="space-y-0.5">
                             <p className="font-bold text-slate-800 line-clamp-1">{log.description}</p>
-                            <p className="text-slate-400 text-[10px]">By {log.performed_by}</p>
+                            <p className="text-slate-400 text-[10px]">
+                              By <span className="text-slate-700 font-semibold">{log.performed_by}</span> • IP: <span className="font-mono">{log.ip_address || '127.0.0.1'}</span>
+                            </p>
                           </div>
-                          <span className={`font-bold px-2.5 py-0.5 rounded-lg text-[10px] shrink-0 ml-2 ${
-                            log.action_type === 'DELETE' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
-                            log.action_type === 'CREATE' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
-                            'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}>
-                            {log.module}
-                          </span>
+                          <button
+                            onClick={() => setSelectedAuditLog(log)}
+                            className="text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 transition cursor-pointer"
+                          >
+                            Details
+                          </button>
                         </div>
                       ))}
                     </div>
@@ -1263,50 +1334,116 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 7. AUDIT TRAIL LOGS */}
+          {/* 7. LIVE AUDIT TRAIL LOGS (SINGLE-LINE DENSE TABLE + VIEW DETAILS MODAL) */}
           {activeMenu === 'audit-logs' && (
             <div className="space-y-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">Audit Trail Logs</h2>
-                <p className="text-xs text-slate-500">Live immutable stream of all creation, updates, and deletions across Buddy Fleets</p>
+              
+              {/* Header & Filter Bar */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 flex items-center gap-2.5">
+                    Security & Live Audit Trail Logs
+                    <span className="flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-200">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Live Stream Active
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Sub-second immutable telemetry • Auto-purged after 7 days (Zero DB Bloat)
+                  </p>
+                </div>
+
+                {/* Search Bar */}
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search logs by IP, User, Action..."
+                    value={auditSearch}
+                    onChange={(e) => setAuditSearch(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-2xl pl-9 pr-3.5 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 shadow-2xs"
+                  />
+                </div>
               </div>
 
-              <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm divide-y divide-slate-100">
-                {auditLogs.length === 0 ? (
-                  <p className="text-center py-8 text-xs text-slate-400">No activity recorded yet.</p>
-                ) : (
-                  auditLogs.map((log) => (
-                    <div key={log.id} className="py-3.5 flex items-start justify-between text-xs">
-                      <div className="flex items-start gap-3.5">
-                        <div className={`p-2.5 rounded-2xl mt-0.5 shadow-sm ${
-                          log.action_type === 'DELETE' 
-                            ? 'bg-rose-50 text-rose-600 border border-rose-100' 
-                            : log.action_type === 'CREATE' 
-                            ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                            : 'bg-amber-50 text-amber-600 border border-amber-100'
-                        }`}>
-                          <History className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-extrabold text-slate-900">{log.description}</span>
-                            <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-slate-100 text-slate-700">
-                              {log.module}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-slate-400 font-mono mt-1">
-                            Action: <span className="font-bold text-slate-600">{log.action_type}</span> • By: <span className="font-bold text-slate-700">{log.performed_by}</span> (@{log.performed_by_username || 'system'})
-                          </p>
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-[10px] bg-slate-50 border border-slate-200 text-slate-600 px-2.5 py-1 rounded-xl font-mono font-bold shadow-2xs">
-                          {new Date(log.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                )}
+              {/* Single-Line Compact Table */}
+              <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs whitespace-nowrap">
+                    <thead className="bg-slate-50/90 text-slate-500 font-extrabold border-b border-slate-100">
+                      <tr>
+                        <th className="p-3.5">Timestamp (UTC)</th>
+                        <th className="p-3.5">User Identity</th>
+                        <th className="p-3.5">IP Address</th>
+                        <th className="p-3.5">Module & Action</th>
+                        <th className="p-3.5">Event Description (Single Line)</th>
+                        <th className="p-3.5 text-right">Forensic Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {filteredAuditLogs.length === 0 ? (
+                        <tr>
+                          <td colSpan="6" className="p-8 text-center text-slate-400">
+                            No telemetry logs found matching your filter within the last 7 days.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredAuditLogs.map((log) => (
+                          <tr key={log.id} className="hover:bg-slate-50/80 transition group">
+                            {/* Timestamp */}
+                            <td className="p-3.5 font-mono text-[11px] text-slate-500">
+                              {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} • {new Date(log.created_at).toLocaleDateString()}
+                            </td>
+
+                            {/* User Profile */}
+                            <td className="p-3.5">
+                              <span className="font-extrabold text-slate-900">{log.performed_by}</span>
+                              <span className="text-slate-400 text-[11px] font-mono ml-1.5">(@{log.performed_by_username || 'system'})</span>
+                            </td>
+
+                            {/* IP Address */}
+                            <td className="p-3.5">
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                                {log.ip_address || '127.0.0.1'}
+                              </span>
+                            </td>
+
+                            {/* Module & Action Pill */}
+                            <td className="p-3.5">
+                              <span className={`px-2 py-0.5 rounded-md font-mono font-black text-[10px] ${
+                                log.action_type === 'DELETE' 
+                                  ? 'bg-rose-50 text-rose-700 border border-rose-200' 
+                                  : log.action_type === 'CREATE' 
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                  : log.action_type === 'PASSWORD_RESET'
+                                  ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                                  : 'bg-amber-50 text-amber-700 border border-amber-200'
+                              }`}>
+                                {log.module}:{log.action_type}
+                              </span>
+                            </td>
+
+                            {/* Single Line Description */}
+                            <td className="p-3.5 max-w-md truncate text-slate-800 font-medium" title={log.description}>
+                              {log.description}
+                            </td>
+
+                            {/* Action Button */}
+                            <td className="p-3.5 text-right">
+                              <button
+                                onClick={() => setSelectedAuditLog(log)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 font-bold rounded-xl text-xs transition cursor-pointer shadow-2xs"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>View Details</span>
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           )}
@@ -1314,11 +1451,118 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </main>
       </div>
 
-      {/* MODALS CONTAINER */}
+      {/* =========================================================================
+          FORENSIC AUDIT DETAILS DRAWER / MODAL
+      ========================================================================== */}
+      {selectedAuditLog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-xl ${
+                  selectedAuditLog.action_type === 'DELETE' 
+                    ? 'bg-rose-50 text-rose-600' 
+                    : selectedAuditLog.action_type === 'CREATE' 
+                    ? 'bg-emerald-50 text-emerald-600' 
+                    : 'bg-blue-50 text-blue-600'
+                }`}>
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-slate-900">Forensic Audit Inspection</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">Log ID: {selectedAuditLog.id}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedAuditLog(null)}
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Forensic Detail Grid */}
+            <div className="space-y-3 text-xs">
+              
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Event Summary</span>
+                <p className="font-bold text-slate-900 text-sm">{selectedAuditLog.description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase">
+                    <Globe className="w-3.5 h-3.5" />
+                    <span>Network & Public IP</span>
+                  </div>
+                  <p className="font-mono font-bold text-slate-900">{selectedAuditLog.ip_address || '127.0.0.1'}</p>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                  <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase">
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Exact Timestamp</span>
+                  </div>
+                  <p className="font-mono font-bold text-slate-900">{new Date(selectedAuditLog.created_at).toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Operator Identity</span>
+                  <p className="font-bold text-slate-900">{selectedAuditLog.performed_by}</p>
+                  <p className="text-[11px] text-slate-400 font-mono">@{selectedAuditLog.performed_by_username || 'system'}</p>
+                </div>
+
+                <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Action Tag</span>
+                  <p className="font-mono font-extrabold text-blue-600">{selectedAuditLog.module} : {selectedAuditLog.action_type}</p>
+                </div>
+              </div>
+
+              {/* User Agent / Device Signature */}
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase">
+                  <Monitor className="w-3.5 h-3.5" />
+                  <span>Device Signature & Browser Agent</span>
+                </div>
+                <p className="font-mono text-[11px] text-slate-600 break-all">{selectedAuditLog.user_agent || 'Standard Web Console Client'}</p>
+              </div>
+
+              {/* Payload Metadata JSON */}
+              {selectedAuditLog.metadata && Object.keys(selectedAuditLog.metadata).length > 0 && (
+                <div className="p-3 bg-slate-900 text-slate-200 rounded-2xl space-y-1 font-mono text-[11px] overflow-hidden">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Audit Payload (State Diff)</span>
+                  <pre className="overflow-x-auto p-2 bg-slate-950/80 rounded-xl text-emerald-400">
+                    {JSON.stringify(selectedAuditLog.metadata, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+            </div>
+
+            {/* Close Button */}
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setSelectedAuditLog(null)}
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Close Inspector
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODALS CONTAINER
+      ========================================================================== */}
       
       {/* 1. Add Site */}
       {modalType === 'ADD_SITE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Add Site</h3>
@@ -1366,7 +1610,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 2. Add Vehicle */}
       {modalType === 'ADD_VEHICLE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Register Vehicle</h3>
@@ -1430,7 +1674,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 3. Add User */}
       {modalType === 'ADD_USER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Create Staff User</h3>
@@ -1513,7 +1757,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 4. Edit User */}
       {modalType === 'EDIT_USER' && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Edit User Details</h3>
@@ -1581,7 +1825,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 5. Add Driver */}
       {modalType === 'ADD_DRIVER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Add Commercial Driver</h3>
@@ -1640,7 +1884,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 6. Edit Driver */}
       {modalType === 'EDIT_DRIVER' && selectedDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Edit Commercial Driver</h3>
@@ -1695,7 +1939,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 7. Reset Password */}
       {modalType === 'RESET_PASS' && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex items-center gap-2 text-amber-600">
               <Key className="w-5 h-5" />
@@ -1725,7 +1969,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 8. Edit Profile */}
       {modalType === 'EDIT_PROFILE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Edit Root Profile</h3>
