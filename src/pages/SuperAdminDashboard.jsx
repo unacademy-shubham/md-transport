@@ -28,8 +28,9 @@ import {
 } from 'lucide-react';
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
+  // Navigation State with LocalStorage Memory
   const [activeMenu, setActiveMenu] = useState(() => {
-    return localStorage.getItem('buddy_tms_active_tab') || 'dashboard';
+    return localStorage.getItem('buddy_fleets_active_tab') || 'dashboard';
   });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
@@ -87,7 +88,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
   const handleMenuChange = (menu) => {
     setActiveMenu(menu);
-    localStorage.setItem('buddy_tms_active_tab', menu);
+    localStorage.setItem('buddy_fleets_active_tab', menu);
   };
 
   // Fetch Live Data
@@ -116,7 +117,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     fetchAllData();
 
     const channel = supabase
-      .channel('realtime_buddy_tms_build')
+      .channel('realtime_buddy_fleets_stream')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'sites' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_users' }, () => fetchAllData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => fetchAllData())
@@ -392,29 +393,29 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   };
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col font-sans select-none">
+    <div className="min-h-screen bg-[#f1f5f9] text-slate-800 flex flex-col font-sans select-none">
       
       {/* Toast Notification */}
       {toast.open && (
         <div className="fixed top-5 right-5 z-60 animate-in fade-in slide-in-from-top-4 duration-300">
-          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl border text-xs font-bold backdrop-blur-md ${
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border text-xs font-bold backdrop-blur-md ${
             toast.type === 'error'
-              ? 'bg-rose-50/95 border-rose-200 text-rose-800 shadow-rose-500/15'
+              ? 'bg-rose-950/90 border-rose-700/80 text-rose-200 shadow-rose-950/50'
               : toast.type === 'warning'
-              ? 'bg-amber-50/95 border-amber-200 text-amber-800 shadow-amber-500/15'
-              : 'bg-emerald-50/95 border-emerald-200 text-emerald-800 shadow-emerald-500/15'
+              ? 'bg-amber-950/90 border-amber-700/80 text-amber-200 shadow-amber-950/50'
+              : 'bg-emerald-950/90 border-emerald-700/80 text-emerald-200 shadow-emerald-950/50'
           }`}>
             {toast.type === 'error' ? (
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             ) : toast.type === 'warning' ? (
-              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
             ) : (
-              <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+              <Check className="w-4 h-4 text-emerald-400 shrink-0" />
             )}
             <span>{toast.message}</span>
             <button
               onClick={() => setToast({ open: false, message: '', type: 'success' })}
-              className="p-1 text-slate-400 hover:text-slate-600 ml-2 cursor-pointer"
+              className="p-1 text-slate-400 hover:text-white ml-2 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -424,7 +425,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* Confirmation Modal */}
       {confirmDialog.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-100 text-center animate-in zoom-in-95 duration-200">
             <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 mx-auto flex items-center justify-center shadow-inner">
               <AlertTriangle className="w-6 h-6" />
@@ -446,7 +447,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               <button
                 type="button"
                 onClick={confirmDialog.onConfirm}
-                className="flex-1 py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-600/25 transition cursor-pointer"
+                className="flex-1 py-2.5 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-600/25 transition cursor-pointer"
               >
                 Yes, Delete
               </button>
@@ -455,53 +456,64 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 1. Header with Vibrant Branding */}
-      <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-40 px-6 py-3 shadow-xs">
+      {/* 1. Top Header (Dark & Colorful Theme) */}
+      <header className="bg-[#0f172a] border-b border-slate-800 sticky top-0 z-40 px-6 py-3 shadow-md">
         <div className="flex items-center justify-between w-full">
           
+          {/* Brand Logo & Name */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-cyan-400 text-white flex items-center justify-center font-black shadow-lg shadow-blue-500/25 text-lg tracking-wider">
-              BT
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-cyan-500 via-blue-600 to-indigo-600 text-white flex items-center justify-center font-black shadow-lg shadow-cyan-500/25 text-lg tracking-wider border border-white/10">
+              BF
             </div>
             <div>
-              <h1 className="font-black text-base text-slate-900 tracking-tight flex items-center gap-2">
-                Buddy TMS
-                <span className="flex items-center gap-1.5 text-[10px] bg-emerald-50 text-emerald-700 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-200">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <h1 className="font-black text-base text-white tracking-tight flex items-center gap-2">
+                Buddy Fleets
+                <span className="flex items-center gap-1.5 text-[10px] bg-emerald-500/10 text-emerald-400 font-extrabold px-2.5 py-0.5 rounded-full border border-emerald-500/30">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                   Live Sync
                 </span>
               </h1>
-              <p className="text-[11px] text-slate-500 font-medium">Enterprise Transport & Fleet Logistics Cloud</p>
+              <p className="text-[11px] text-slate-400 font-medium">Transport Management System</p>
             </div>
           </div>
 
-          {/* User Profile Dropdown */}
+          {/* User Profile Section (Circular Avatar) */}
           <div className="relative flex items-center gap-3">
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-3 bg-gradient-to-r from-slate-50 to-indigo-50/50 hover:from-slate-100 hover:to-indigo-100/50 p-1.5 pr-3 rounded-2xl border border-slate-200 transition cursor-pointer shadow-xs"
+                className="flex items-center gap-3 bg-slate-800/80 hover:bg-slate-800 p-1.5 pr-3.5 rounded-full border border-slate-700/80 transition cursor-pointer shadow-sm"
               >
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
-                  {currentUser?.name ? currentUser.name.charAt(0) : 'A'}
-                </div>
+                {/* Circular Profile Avatar */}
+                {currentUser?.photo_url ? (
+                  <img
+                    src={currentUser.photo_url}
+                    alt={currentUser?.name}
+                    className="w-9 h-9 rounded-full object-cover border-2 border-cyan-400 shadow-xs"
+                  />
+                ) : (
+                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 text-white flex items-center justify-center font-black text-sm shadow-md border-2 border-slate-700">
+                    {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : 'A'}
+                  </div>
+                )}
+                
                 <div className="text-left hidden sm:block">
-                  <p className="text-xs font-bold text-slate-900 leading-tight">{currentUser?.name || 'Super Admin'}</p>
-                  <p className="text-[10px] text-indigo-600 font-extrabold">{currentUser?.role || 'SUPER_ADMIN'}</p>
+                  <p className="text-xs font-bold text-white leading-tight">{currentUser?.name || 'Super Admin'}</p>
+                  <p className="text-[10px] text-cyan-400 font-extrabold">{currentUser?.role || 'SUPER_ADMIN'}</p>
                 </div>
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
               </button>
 
               {userMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl border border-slate-200 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2">
-                  <div className="px-4 py-2 border-b border-slate-100">
-                    <p className="text-xs font-bold text-slate-900">{currentUser?.name || 'Super Admin'}</p>
+                <div className="absolute right-0 mt-2 w-56 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl py-2 z-50 animate-in fade-in slide-in-from-top-2 text-slate-200">
+                  <div className="px-4 py-2 border-b border-slate-800">
+                    <p className="text-xs font-bold text-white">{currentUser?.name || 'Super Admin'}</p>
                     <p className="text-[11px] text-slate-400 font-mono">@{currentUser?.username || 'admin'}</p>
                   </div>
 
                   <button
                     onClick={() => { setModalType('EDIT_PROFILE'); setUserMenuOpen(false); }}
-                    className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 font-medium cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-cyan-400 flex items-center gap-2 font-medium cursor-pointer transition"
                   >
                     <Edit3 className="w-4 h-4 text-slate-400" />
                     <span>Edit My Profile</span>
@@ -509,17 +521,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
                   <button
                     onClick={() => { handleMenuChange('audit-logs'); setUserMenuOpen(false); }}
-                    className="w-full text-left px-4 py-2.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-600 flex items-center gap-2 font-medium cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-cyan-400 flex items-center gap-2 font-medium cursor-pointer transition"
                   >
                     <History className="w-4 h-4 text-slate-400" />
                     <span>System Audit Trail</span>
                   </button>
 
-                  <div className="border-t border-slate-100 my-1" />
+                  <div className="border-t border-slate-800 my-1" />
 
                   <button
                     onClick={onLogout}
-                    className="w-full text-left px-4 py-2.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2 font-bold cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 text-xs text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 flex items-center gap-2 font-bold cursor-pointer transition"
                   >
                     <LogOut className="w-4 h-4" />
                     <span>Sign Out</span>
@@ -533,245 +545,240 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       </header>
 
-      {/* 2. Main Body (Sidebar + Content) */}
+      {/* 2. Main Body (Dark Sidebar + Bright Contrast Workspace) */}
       <div className="flex-1 flex overflow-hidden">
         
-        {/* Left Sidebar */}
-        <aside className="w-68 bg-white border-r border-slate-200 flex flex-col justify-between p-3 shrink-0 shadow-xs overflow-y-auto">
-          <div className="space-y-4">
+        {/* Left Sidebar (Dark Colorful Theme, No Bottom Box) */}
+        <aside className="w-68 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3 shrink-0 shadow-lg overflow-y-auto">
+          <div className="space-y-4 flex-1">
             
             {/* GROUP 1: OPERATIONS & DISPATCH */}
             <div className="space-y-0.5">
-              <div className="px-3 py-1 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+              <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 Operations & Dispatch
               </div>
 
               <button
                 onClick={() => handleMenuChange('dashboard')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'dashboard' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <LayoutDashboard className="w-4 h-4" />
+                <LayoutDashboard className={`w-4 h-4 ${activeMenu === 'dashboard' ? 'text-white' : 'text-blue-400'}`} />
                 <span>Dashboard Overview</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('sites')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'sites' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Building2 className="w-4 h-4" />
+                  <Building2 className={`w-4 h-4 ${activeMenu === 'sites' ? 'text-white' : 'text-indigo-400'}`} />
                   <span>Site / Plant Master</span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'sites' ? 'bg-white/20 text-white' : 'bg-blue-50 text-blue-700'}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'sites' ? 'bg-white/20 text-white' : 'bg-slate-800 text-cyan-400 border border-slate-700'}`}>
                   {sites.length}
                 </span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('destinations')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'destinations' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <MapPin className="w-4 h-4" />
+                  <MapPin className={`w-4 h-4 ${activeMenu === 'destinations' ? 'text-white' : 'text-amber-400'}`} />
                   <span>Destination Hubs</span>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-50 text-amber-700">Hubs</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">Hubs</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('vehicles')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'vehicles' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Truck className="w-4 h-4" />
+                  <Truck className={`w-4 h-4 ${activeMenu === 'vehicles' ? 'text-white' : 'text-emerald-400'}`} />
                   <span>Vehicle & Fleet</span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'vehicles' ? 'bg-white/20 text-white' : 'bg-emerald-50 text-emerald-700'}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'vehicles' ? 'bg-white/20 text-white' : 'bg-slate-800 text-emerald-400 border border-slate-700'}`}>
                   {vehicles.length}
                 </span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('drivers')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'drivers' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <UserCheck className="w-4 h-4" />
+                  <UserCheck className={`w-4 h-4 ${activeMenu === 'drivers' ? 'text-white' : 'text-purple-400'}`} />
                   <span>Driver Directory</span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'drivers' ? 'bg-white/20 text-white' : 'bg-purple-50 text-purple-700'}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'drivers' ? 'bg-white/20 text-white' : 'bg-slate-800 text-purple-400 border border-slate-700'}`}>
                   {drivers.length}
                 </span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('trips')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'trips' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <FileText className="w-4 h-4" />
+                  <FileText className={`w-4 h-4 ${activeMenu === 'trips' ? 'text-white' : 'text-cyan-400'}`} />
                   <span>Trip & LR Register</span>
                 </div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-cyan-50 text-cyan-700">Live</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Live</span>
               </button>
             </div>
 
             {/* GROUP 2: ACCOUNTS & ASSETS */}
             <div className="space-y-0.5">
-              <div className="px-3 py-1 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+              <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 Accounts & Assets
               </div>
 
               <button
                 onClick={() => handleMenuChange('finance')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'finance' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <DollarSign className="w-4 h-4" />
+                <DollarSign className={`w-4 h-4 ${activeMenu === 'finance' ? 'text-white' : 'text-emerald-400'}`} />
                 <span>Finance & Diesel</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('tyres')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'tyres' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Disc className="w-4 h-4" />
+                <Disc className={`w-4 h-4 ${activeMenu === 'tyres' ? 'text-white' : 'text-amber-400'}`} />
                 <span>Tyre Inventory</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('compliance')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'compliance' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <ShieldCheck className="w-4 h-4" />
+                  <ShieldCheck className={`w-4 h-4 ${activeMenu === 'compliance' ? 'text-white' : 'text-rose-400'}`} />
                   <span>Vehicle Compliance</span>
                 </div>
-                <span className="text-[9px] px-1.5 py-0.5 rounded font-extrabold bg-rose-50 text-rose-600 border border-rose-200">Alerts</span>
+                <span className="text-[9px] px-1.5 py-0.5 rounded font-extrabold bg-rose-500/20 text-rose-300 border border-rose-500/30">Alerts</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('workshop')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'workshop' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Wrench className="w-4 h-4" />
+                <Wrench className={`w-4 h-4 ${activeMenu === 'workshop' ? 'text-white' : 'text-orange-400'}`} />
                 <span>Workshop & Repairs</span>
               </button>
             </div>
 
             {/* GROUP 3: SYSTEM & GOVERNANCE */}
             <div className="space-y-0.5">
-              <div className="px-3 py-1 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+              <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 System & Governance
               </div>
 
               <button
                 onClick={() => handleMenuChange('users')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'users' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Users className="w-4 h-4" />
+                  <Users className={`w-4 h-4 ${activeMenu === 'users' ? 'text-white' : 'text-purple-400'}`} />
                   <span>User & Staff Accounts</span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'users' ? 'bg-white/20 text-white' : 'bg-indigo-50 text-indigo-700'}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'users' ? 'bg-white/20 text-white' : 'bg-slate-800 text-purple-400 border border-slate-700'}`}>
                   {users.length}
                 </span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('access')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'access' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Key className="w-4 h-4" />
+                <Key className={`w-4 h-4 ${activeMenu === 'access' ? 'text-white' : 'text-amber-400'}`} />
                 <span>Access & RBAC Matrix</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('reports')}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'reports' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <BarChart3 className="w-4 h-4" />
+                <BarChart3 className={`w-4 h-4 ${activeMenu === 'reports' ? 'text-white' : 'text-teal-400'}`} />
                 <span>Reports & MIS</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('audit-logs')}
-                className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
                   activeMenu === 'audit-logs' 
-                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/25' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <History className="w-4 h-4" />
+                  <History className={`w-4 h-4 ${activeMenu === 'audit-logs' ? 'text-white' : 'text-sky-400'}`} />
                   <span>Audit Trail Logs</span>
                 </div>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'audit-logs' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'}`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${activeMenu === 'audit-logs' ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-300 border border-slate-700'}`}>
                   {auditLogs.length}
                 </span>
               </button>
             </div>
 
           </div>
-
-          <div className="mt-4 bg-gradient-to-br from-indigo-50/90 to-blue-50/90 p-3 rounded-2xl border border-indigo-100 text-center space-y-0.5">
-            <p className="text-[11px] font-extrabold text-indigo-950">Buddy TMS Cloud</p>
-            <p className="text-[10px] text-indigo-600 font-semibold">Super Admin Root Console</p>
-          </div>
         </aside>
 
-        {/* Dynamic Workspace */}
+        {/* Dynamic Workspace (Clean White Background for Sharp Contrast) */}
         <main className="flex-1 overflow-y-auto p-6 space-y-6">
 
           {/* 1. DASHBOARD OVERVIEW */}
@@ -784,9 +791,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
+              {/* 4 Rich Metric Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 
-                <div className="bg-gradient-to-br from-blue-500 to-indigo-700 rounded-3xl p-5 text-white shadow-lg shadow-blue-500/20 relative overflow-hidden">
+                <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-800 rounded-3xl p-5 text-white shadow-xl shadow-blue-500/15 relative overflow-hidden">
                   <div className="absolute right-0 top-0 translate-x-3 -translate-y-3 w-24 h-24 bg-white/10 rounded-full blur-xl" />
                   <div className="flex justify-between items-start relative z-10">
                     <div>
@@ -800,7 +808,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-emerald-500 to-teal-700 rounded-3xl p-5 text-white shadow-lg shadow-emerald-500/20 relative overflow-hidden">
+                <div className="bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-800 rounded-3xl p-5 text-white shadow-xl shadow-emerald-500/15 relative overflow-hidden">
                   <div className="absolute right-0 top-0 translate-x-3 -translate-y-3 w-24 h-24 bg-white/10 rounded-full blur-xl" />
                   <div className="flex justify-between items-start relative z-10">
                     <div>
@@ -814,7 +822,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-3xl p-5 text-white shadow-lg shadow-orange-500/20 relative overflow-hidden">
+                <div className="bg-gradient-to-br from-amber-500 via-orange-600 to-amber-700 rounded-3xl p-5 text-white shadow-xl shadow-orange-500/15 relative overflow-hidden">
                   <div className="absolute right-0 top-0 translate-x-3 -translate-y-3 w-24 h-24 bg-white/10 rounded-full blur-xl" />
                   <div className="flex justify-between items-start relative z-10">
                     <div>
@@ -828,7 +836,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-purple-600 to-indigo-800 rounded-3xl p-5 text-white shadow-lg shadow-purple-500/20 relative overflow-hidden">
+                <div className="bg-gradient-to-br from-purple-600 via-indigo-700 to-purple-900 rounded-3xl p-5 text-white shadow-xl shadow-purple-500/15 relative overflow-hidden">
                   <div className="absolute right-0 top-0 translate-x-3 -translate-y-3 w-24 h-24 bg-white/10 rounded-full blur-xl" />
                   <div className="flex justify-between items-start relative z-10">
                     <div>
@@ -847,7 +855,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               {/* Quick Jump Live Streams */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 
-                <div className="bg-white border border-slate-200/80 rounded-3xl p-6 space-y-4 shadow-sm">
+                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-sm">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
@@ -877,7 +885,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   )}
                 </div>
 
-                <div className="bg-white border border-slate-200/80 rounded-3xl p-6 space-y-4 shadow-sm">
+                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-sm">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-100">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
@@ -1249,7 +1257,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   {activeMenu === 'reports' && 'Reports & Executive MIS Analytics'}
                 </h3>
                 <p className="text-xs text-slate-500 max-w-md mx-auto">
-                  This core module is integrated into the Buddy TMS schema and ready for full live configuration.
+                  This core module is integrated into the Buddy Fleets schema and ready for full live configuration.
                 </p>
               </div>
             </div>
@@ -1260,7 +1268,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             <div className="space-y-4">
               <div>
                 <h2 className="text-xl font-black text-slate-900">Audit Trail Logs</h2>
-                <p className="text-xs text-slate-500">Live immutable stream of all creation, updates, and deletions across Buddy TMS</p>
+                <p className="text-xs text-slate-500">Live immutable stream of all creation, updates, and deletions across Buddy Fleets</p>
               </div>
 
               <div className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm divide-y divide-slate-100">
@@ -1310,7 +1318,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       
       {/* 1. Add Site */}
       {modalType === 'ADD_SITE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Add Site</h3>
@@ -1358,7 +1366,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 2. Add Vehicle */}
       {modalType === 'ADD_VEHICLE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Register Vehicle</h3>
@@ -1422,7 +1430,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 3. Add User */}
       {modalType === 'ADD_USER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Create Staff User</h3>
@@ -1505,7 +1513,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 4. Edit User */}
       {modalType === 'EDIT_USER' && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Edit User Details</h3>
@@ -1573,7 +1581,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 5. Add Driver */}
       {modalType === 'ADD_DRIVER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Add Commercial Driver</h3>
@@ -1632,7 +1640,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 6. Edit Driver */}
       {modalType === 'EDIT_DRIVER' && selectedDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Edit Commercial Driver</h3>
@@ -1687,7 +1695,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 7. Reset Password */}
       {modalType === 'RESET_PASS' && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex items-center gap-2 text-amber-600">
               <Key className="w-5 h-5" />
@@ -1717,7 +1725,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
       {/* 8. Edit Profile */}
       {modalType === 'EDIT_PROFILE' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Edit Root Profile</h3>
