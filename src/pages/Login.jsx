@@ -10,14 +10,29 @@ export default function Login({ onLoginSuccess }) {
   const [forgotModal, setForgotModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Helper: Fetch Client Public IP
+  // Helper: Fast Client Public IP with Timeout Protection
   const getClientIp = async () => {
     try {
-      const res = await fetch('https://api.ipify.org?format=json');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500); // 1.5s max timeout
+
+      const res = await fetch('https://api.ipify.org?format=json', {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
       const data = await res.json();
       return data.ip || '127.0.0.1';
     } catch {
       return '127.0.0.1';
+    }
+  };
+
+  // Helper: Reliable Audit Log Insert
+  const recordAuditLog = async (logData) => {
+    try {
+      await supabase.from('audit_logs').insert([logData]);
+    } catch (err) {
+      console.error('Audit log failed to record:', err);
     }
   };
 
@@ -38,7 +53,7 @@ export default function Login({ onLoginSuccess }) {
     try {
       const ip = await getClientIp();
 
-      // Check Super Admin Fallback / Hardcoded Root Account
+      // Check Super Admin Root Account
       if (cleanUser === 'admin' && cleanPass === 'admin123') {
         const rootUser = {
           id: 'root-admin',
@@ -50,21 +65,21 @@ export default function Login({ onLoginSuccess }) {
           password_hash: 'admin123'
         };
 
-        // Live Forensic Audit Log Insert for Super Admin
-        await supabase.from('audit_logs').insert([{
+        // 1. Live Audit Log: Super Admin Login
+        await recordAuditLog({
           module: 'AUTH',
           action_type: 'LOGIN',
-          description: `Super Admin @${rootUser.username} authenticated successfully via Web Console`,
+          description: `Super Admin @${rootUser.username} (${rootUser.name}) logged in successfully via Web Console`,
           performed_by: rootUser.name,
           performed_by_username: rootUser.username,
           ip_address: ip,
           user_agent: navigator.userAgent || 'Web Console Client',
           metadata: {
-            auth_method: 'ROOT_DIRECT',
+            auth_type: 'ROOT_DIRECT',
             role: rootUser.role,
-            screen: `${window.screen.width}x${window.screen.height}`
+            screen_size: `${window.screen.width}x${window.screen.height}`
           }
-        }]);
+        });
 
         if (onLoginSuccess) {
           onLoginSuccess(rootUser);
@@ -77,20 +92,20 @@ export default function Login({ onLoginSuccess }) {
         .from('app_users')
         .select('*')
         .eq('username', cleanUser)
-        .single();
+        .maybeSingle();
 
       if (error || !dbUser) {
-        // Failed Login Forensic Log
-        await supabase.from('audit_logs').insert([{
+        // 2. Live Audit Log: Failed Login (User Not Found)
+        await recordAuditLog({
           module: 'AUTH',
           action_type: 'FAILED_LOGIN',
           description: `Failed login attempt for username: @${cleanUser}`,
           performed_by: cleanUser,
           performed_by_username: cleanUser,
           ip_address: ip,
-          user_agent: navigator.userAgent,
-          metadata: { reason: 'User does not exist', attempt_time: new Date().toISOString() }
-        }]);
+          user_agent: navigator.userAgent || 'Web Console Client',
+          metadata: { reason: 'User not found in database', timestamp: new Date().toISOString() }
+        });
 
         setErrorMessage('Invalid username or password.');
         setIsLoading(false);
@@ -99,6 +114,18 @@ export default function Login({ onLoginSuccess }) {
 
       // Check Account Status
       if (dbUser.is_active === false) {
+        // 3. Live Audit Log: Suspended Account Login Attempt
+        await recordAuditLog({
+          module: 'AUTH',
+          action_type: 'FAILED_LOGIN',
+          description: `Blocked login attempt on suspended account: @${cleanUser}`,
+          performed_by: dbUser.name,
+          performed_by_username: cleanUser,
+          ip_address: ip,
+          user_agent: navigator.userAgent || 'Web Console Client',
+          metadata: { reason: 'Account Suspended', role: dbUser.role }
+        });
+
         setErrorMessage('This account is suspended. Contact system administrator.');
         setIsLoading(false);
         return;
@@ -106,25 +133,25 @@ export default function Login({ onLoginSuccess }) {
 
       // Check Password
       if (dbUser.password_hash !== cleanPass) {
-        // Failed Password Forensic Log
-        await supabase.from('audit_logs').insert([{
+        // 4. Live Audit Log: Failed Password Attempt
+        await recordAuditLog({
           module: 'AUTH',
           action_type: 'FAILED_LOGIN',
-          description: `Incorrect password attempt on account: @${cleanUser}`,
+          description: `Incorrect password attempt for @${cleanUser}`,
           performed_by: dbUser.name,
           performed_by_username: cleanUser,
           ip_address: ip,
-          user_agent: navigator.userAgent,
+          user_agent: navigator.userAgent || 'Web Console Client',
           metadata: { reason: 'Incorrect Password Hash', role: dbUser.role }
-        }]);
+        });
 
         setErrorMessage('Invalid username or password.');
         setIsLoading(false);
         return;
       }
 
-      // Live Forensic Audit Log Insert for Staff User
-      await supabase.from('audit_logs').insert([{
+      // 5. Live Audit Log: Successful Staff Login
+      await recordAuditLog({
         module: 'AUTH',
         action_type: 'LOGIN',
         description: `User @${dbUser.username} (${dbUser.name}) logged into system session`,
@@ -136,16 +163,16 @@ export default function Login({ onLoginSuccess }) {
           role: dbUser.role,
           branch: dbUser.branch || 'Head Office',
           site_access: dbUser.site_access || 'ALL',
-          screen: `${window.screen.width}x${window.screen.height}`
+          screen_size: `${window.screen.width}x${window.screen.height}`
         }
-      }]);
+      });
 
       if (onLoginSuccess) {
         onLoginSuccess(dbUser);
       }
     } catch (err) {
       console.error('Login process error:', err);
-      setErrorMessage('Authentication server connection error. Please try again.');
+      setErrorMessage('Authentication server error. Please try again.');
     } finally {
       setIsLoading(false);
     }
