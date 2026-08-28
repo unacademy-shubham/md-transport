@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import * as XLSX from 'xlsx';
 import {
   LayoutDashboard,
   Building2,
@@ -31,7 +32,10 @@ import {
   Shield,
   Search,
   Upload,
-  Camera
+  Camera,
+  Download,
+  FileSpreadsheet,
+  PhoneCall
 } from 'lucide-react';
 import { INDIAN_STATES, INDIA_STATES_DISTRICTS, fetchLocationByPincode } from '../utils/indiaGeoData';
 
@@ -44,7 +48,7 @@ const USER_ROLES = [
 ];
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
-  const [activeMenu, setActiveMenu] = useState(() => {
+const [activeMenu, setActiveMenu] = useState(() => {
     return localStorage.getItem('buddy_fleets_active_tab') || 'dashboard';
   });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -55,6 +59,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
+
+  // Driver Filters & Search States
+  const [driverSearch, setDriverSearch] = useState('');
+  const [driverPlantFilter, setDriverPlantFilter] = useState('ALL');
+  const [driverStatusFilter, setDriverStatusFilter] = useState('ALL');
 
   // Forensic Audit States
   const [selectedAuditLog, setSelectedAuditLog] = useState(null);
@@ -80,7 +89,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   // Custom Toast Notification
   const [toast, setToast] = useState({ open: false, message: '', type: 'success' });
 
-  // Forms
+  // Site Form
   const [siteForm, setSiteForm] = useState({
     site_name: '',
     site_code: '',
@@ -95,6 +104,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   });
   const [pincodeLoading, setPincodeLoading] = useState(false);
 
+  // Vehicle Form
   const [vehicleForm, setVehicleForm] = useState({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
   
   // User Form
@@ -109,7 +119,27 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     assigned_plants: ['ALL']
   });
 
-  const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
+  // Complete Driver Form
+  const [driverForm, setDriverForm] = useState({
+    name: '',
+    phone: '',
+    emergency_phone: '',
+    aadhaar_no: '',
+    address: '',
+    license_no: '',
+    license_expiry: '',
+    license_category: 'TRANS (Heavy)',
+    assigned_vehicle: 'Unassigned',
+    assigned_plant: 'ALL',
+    experience_years: '',
+    bank_account_no: '',
+    ifsc_code: '',
+    bank_name: '',
+    upi_id: '',
+    status: 'Available',
+    photo_url: ''
+  });
+
   const [resetPassValue, setResetPassValue] = useState('');
   
   // Profile Form
@@ -244,9 +274,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     };
   }, [clientIp]);
 
-// ================= SITE MASTER LOGIC =================
-
-  // Auto-fill Location Details via PIN Code
+  // ================= SITE MASTER LOGIC =================
   const handleSitePincodeChange = async (e) => {
     const pin = e.target.value.replace(/\D/g, '').slice(0, 6);
     setSiteForm(prev => ({ ...prev, pincode: pin }));
@@ -265,13 +293,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 1. Create Site (Clean, Duplicate Protected & Optimistic Sync)
- const handleCreateSite = async (e) => {
+  const handleCreateSite = async (e) => {
     e.preventDefault();
     const siteCode = siteForm.site_code.toUpperCase().trim();
     const siteName = siteForm.site_name.trim();
 
-    // Duplicate Check
     const isDuplicate = sites.some(
       s => (s.code || s.site_code)?.toUpperCase() === siteCode
     );
@@ -296,7 +322,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       created_by: currentUser?.name || 'SuperAdmin'
     };
 
-    // STEP A: Instant UI State Update & Modal Close (Zero Delay)
     const tempId = crypto.randomUUID();
     const optimisticSite = { ...newSitePayload, id: tempId, created_at: new Date().toISOString() };
     setSites(prev => [optimisticSite, ...prev]);
@@ -316,7 +341,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       manager_email: ''
     });
 
-    // STEP B: Background Server Insert & Logging (Non-blocking)
     (async () => {
       const { data, error } = await supabase
         .from('sites')
@@ -325,7 +349,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         .single();
 
       if (error) {
-        fetchAllData(); // Rollback if error
+        fetchAllData();
         showToast('Error saving plant: ' + error.message, 'error');
       } else if (data) {
         setSites(prev => prev.map(s => s.id === tempId ? data : s));
@@ -337,7 +361,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     })();
   };
 
-  // 2. Update Site (Instant UI Close & Background Sync)
   const handleUpdateSite = async (e) => {
     e.preventDefault();
     if (!selectedSite) return;
@@ -345,7 +368,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     const siteCode = siteForm.site_code.toUpperCase().trim();
     const siteName = siteForm.site_name.trim();
 
-    // Duplicate Check against other existing plants
     const isDuplicate = sites.some(
       s => (s.code || s.site_code)?.toUpperCase() === siteCode && s.id !== selectedSite.id
     );
@@ -370,14 +392,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     };
 
     const targetSiteId = selectedSite.id;
-
-    // STEP A: Instant UI State Update & Modal Close (Zero Delay)
     setSites(prev => prev.map(s => s.id === targetSiteId ? { ...s, ...updatedData } : s));
     setModalType(null);
     setSelectedSite(null);
     showToast('Plant details updated!');
 
-    // STEP B: Background Server Update & Logging (Non-blocking)
     (async () => {
       const { error } = await supabase
         .from('sites')
@@ -385,7 +404,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         .eq('id', targetSiteId);
 
       if (error) {
-        fetchAllData(); // Rollback if failed
+        fetchAllData();
         showToast('Error updating plant: ' + error.message, 'error');
       } else {
         logAuditActivity('SITE', 'UPDATE', `Updated details for plant ${siteName} (${siteCode})`);
@@ -393,7 +412,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     })();
   };
 
-  // 3. Delete Site (Instant Removal & Background Delete)
   const handleDeleteSite = (site) => {
     const siteName = site.name || site.site_name;
     const siteCode = site.code || site.site_code;
@@ -403,15 +421,13 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       title: 'Delete Plant Site',
       message: `Are you sure you want to delete ${siteName} (${siteCode})? This cannot be undone.`,
       onConfirm: async () => {
-        // Instant removal
         setSites(prev => prev.filter(s => s.id !== site.id));
         setConfirmDialog(prev => ({ ...prev, open: false }));
         showToast(`Plant ${siteName} deleted!`);
 
-        // Background Server Delete & Logging
         const { error } = await supabase.from('sites').delete().eq('id', site.id);
         if (error) {
-          fetchAllData(); // Rollback
+          fetchAllData();
           showToast('Error deleting plant: ' + error.message, 'error');
         } else {
           logAuditActivity('SITE', 'DELETE', `Deleted plant location ${siteName} (${siteCode})`);
@@ -420,16 +436,13 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     });
   };
 
-  // 4. Toggle Operational Status (Instant Toggle & Background Sync)
   const handleToggleSiteStatus = async (site) => {
     const nextStatus = !site.is_active;
     const siteName = site.name || site.site_name;
 
-    // Instant Toggle
     setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: nextStatus } : s));
     showToast(`Plant status set to ${nextStatus ? 'Active' : 'Inactive'}`);
 
-    // Background Server Update & Logging
     (async () => {
       const { error } = await supabase
         .from('sites')
@@ -437,7 +450,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         .eq('id', site.id);
 
       if (error) {
-        setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: !nextStatus } : s)); // Rollback
+        setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: !nextStatus } : s));
         showToast('Error updating status: ' + error.message, 'error');
       } else {
         logAuditActivity('SITE', 'UPDATE', `Switched plant ${siteName} status to ${nextStatus ? 'OPERATIONAL' : 'INACTIVE'}`);
@@ -470,7 +483,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // Photo Upload Handler
   const handlePhotoUpload = (e, formType = 'user') => {
     const file = e.target.files?.[0];
     if (file) {
@@ -482,6 +494,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       reader.onloadend = () => {
         if (formType === 'profile') {
           setProfileForm(prev => ({ ...prev, photo_url: reader.result }));
+        } else if (formType === 'driver') {
+          setDriverForm(prev => ({ ...prev, photo_url: reader.result }));
         } else {
           setUserForm(prev => ({ ...prev, photo_url: reader.result }));
         }
@@ -490,7 +504,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // Multi-Plant Selection Toggle
   const handlePlantToggle = (plantCode) => {
     setUserForm(prev => {
       let current = [...(prev.assigned_plants || [])];
@@ -560,7 +573,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // Update User Details (Allows SuperAdmin to edit username freely)
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     if (!selectedUser) return;
@@ -598,7 +610,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // Self & SuperAdmin Delete Protection
   const handleDeleteUser = (user) => {
     const isSelf = user.id === currentUser?.id || user.username?.toLowerCase() === currentUser?.username?.toLowerCase();
     const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.username?.toLowerCase() === 'admin';
@@ -651,7 +662,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // Self & SuperAdmin Status Toggle Protection
   const handleToggleUserStatus = async (user) => {
     const isSelf = user.id === currentUser?.id || user.username?.toLowerCase() === currentUser?.username?.toLowerCase();
     const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.username?.toLowerCase() === 'admin';
@@ -683,61 +693,127 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // ================= DRIVER LOGIC =================
-  const handleCreateDriver = async (e) => {
-    e.preventDefault();
-    const newDriverPayload = {
-      name: driverForm.name,
-      phone: driverForm.phone,
-      license_no: driverForm.license_no.toUpperCase().trim(),
-      assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
-      status: 'Active',
-      created_by: currentUser?.name || 'SuperAdmin'
-    };
+  // ================= DRIVER LOGIC (UPGRADED WITH EXCEL, DL EXPIRY & FAST SYNC) =================
 
-    const { data, error } = await supabase.from('drivers').insert([newDriverPayload]).select().single();
+  // Helper: DL Expiry Status Checker
+  const getDlExpiryStatus = (expiryDate) => {
+    if (!expiryDate) return { label: 'No Date', color: 'bg-slate-100 text-slate-600 border-slate-200' };
+    const today = new Date();
+    const exp = new Date(expiryDate);
+    const diffDays = Math.ceil((exp - today) / (1000 * 60 * 60 * 24));
 
-    if (error) {
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      setDrivers(prev => [data || { ...newDriverPayload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
-      await logAuditActivity('DRIVER', 'CREATE', `Added commercial driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`);
-      setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
-      setModalType(null);
-      showToast(`Driver ${driverForm.name} registered!`);
+    if (diffDays < 0) {
+      return { label: 'Expired', color: 'bg-rose-50 text-rose-700 border-rose-200 font-black animate-pulse' };
+    } else if (diffDays <= 30) {
+      return { label: `Expires in ${diffDays}d`, color: 'bg-amber-50 text-amber-700 border-amber-200 font-bold' };
     }
+    return { label: 'Valid', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' };
   };
 
+  // 1. Create Driver (Instant 0-Delay)
+  const handleCreateDriver = async (e) => {
+    e.preventDefault();
+    const cleanLicense = driverForm.license_no.toUpperCase().trim();
+    const cleanPhone = driverForm.phone.trim();
+
+    if (drivers.some(d => d.license_no?.toUpperCase() === cleanLicense)) {
+      showToast(`DL Number '${cleanLicense}' already exists!`, 'warning');
+      return;
+    }
+
+    const newDriverPayload = {
+      name: driverForm.name.trim(),
+      phone: cleanPhone,
+      emergency_phone: driverForm.emergency_phone.trim(),
+      aadhaar_no: driverForm.aadhaar_no.trim(),
+      address: driverForm.address.trim(),
+      license_no: cleanLicense,
+      license_expiry: driverForm.license_expiry,
+      license_category: driverForm.license_category,
+      assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
+      assigned_plant: driverForm.assigned_plant || 'ALL',
+      experience_years: parseFloat(driverForm.experience_years) || 0,
+      bank_account_no: driverForm.bank_account_no.trim(),
+      ifsc_code: driverForm.ifsc_code.toUpperCase().trim(),
+      bank_name: driverForm.bank_name.trim(),
+      upi_id: driverForm.upi_id.trim(),
+      status: driverForm.status || 'Available',
+      photo_url: driverForm.photo_url || null,
+      created_by: currentUser?.name || 'SuperAdmin',
+      last_action_note: `Driver profile created by ${currentUser?.name || 'SuperAdmin'}`
+    };
+
+    const tempId = crypto.randomUUID();
+    const optimisticDriver = { ...newDriverPayload, id: tempId, created_at: new Date().toISOString() };
+    setDrivers(prev => [optimisticDriver, ...prev]);
+    setModalType(null);
+    showToast(`Driver ${driverForm.name} registered successfully!`);
+
+    (async () => {
+      const { data, error } = await supabase.from('drivers').insert([newDriverPayload]).select().single();
+      if (error) {
+        fetchAllData();
+        showToast('Error saving driver: ' + error.message, 'error');
+      } else if (data) {
+        setDrivers(prev => prev.map(d => d.id === tempId ? data : d));
+        logAuditActivity('DRIVER', 'CREATE', `Added commercial driver ${driverForm.name} (DL: ${cleanLicense})`);
+      }
+    })();
+  };
+
+  // 2. Update Driver (Instant 0-Delay)
   const handleUpdateDriver = async (e) => {
     e.preventDefault();
     if (!selectedDriver) return;
 
+    const cleanLicense = driverForm.license_no.toUpperCase().trim();
+    const isDuplicate = drivers.some(d => d.license_no?.toUpperCase() === cleanLicense && d.id !== selectedDriver.id);
+    if (isDuplicate) {
+      showToast(`DL Number '${cleanLicense}' is used by another driver!`, 'warning');
+      return;
+    }
+
     const updatedDriverPayload = {
-      name: driverForm.name,
-      phone: driverForm.phone,
-      license_no: driverForm.license_no.toUpperCase().trim(),
+      name: driverForm.name.trim(),
+      phone: driverForm.phone.trim(),
+      emergency_phone: driverForm.emergency_phone.trim(),
+      aadhaar_no: driverForm.aadhaar_no.trim(),
+      address: driverForm.address.trim(),
+      license_no: cleanLicense,
+      license_expiry: driverForm.license_expiry,
+      license_category: driverForm.license_category,
       assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
-      status: driverForm.status
+      assigned_plant: driverForm.assigned_plant || 'ALL',
+      experience_years: parseFloat(driverForm.experience_years) || 0,
+      bank_account_no: driverForm.bank_account_no.trim(),
+      ifsc_code: driverForm.ifsc_code.toUpperCase().trim(),
+      bank_name: driverForm.bank_name.trim(),
+      upi_id: driverForm.upi_id.trim(),
+      status: driverForm.status,
+      photo_url: driverForm.photo_url || null,
+      updated_by: currentUser?.name || 'SuperAdmin',
+      last_action_note: `Profile updated by ${currentUser?.name || 'SuperAdmin'}`,
+      updated_at: new Date().toISOString()
     };
 
-    setDrivers(prev => prev.map(d => d.id === selectedDriver.id ? { ...d, ...updatedDriverPayload } : d));
+    const targetId = selectedDriver.id;
+    setDrivers(prev => prev.map(d => d.id === targetId ? { ...d, ...updatedDriverPayload } : d));
+    setModalType(null);
+    setSelectedDriver(null);
+    showToast('Driver details updated!');
 
-    const { error } = await supabase
-      .from('drivers')
-      .update(updatedDriverPayload)
-      .eq('id', selectedDriver.id);
-
-    if (error) {
-      fetchAllData();
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      await logAuditActivity('DRIVER', 'UPDATE', `Updated driver ${driverForm.name} (DL: ${driverForm.license_no})`);
-      setModalType(null);
-      setSelectedDriver(null);
-      showToast('Driver details updated!');
-    }
+    (async () => {
+      const { error } = await supabase.from('drivers').update(updatedDriverPayload).eq('id', targetId);
+      if (error) {
+        fetchAllData();
+        showToast('Error updating driver: ' + error.message, 'error');
+      } else {
+        logAuditActivity('DRIVER', 'UPDATE', `Updated driver ${driverForm.name} (DL: ${cleanLicense})`);
+      }
+    })();
   };
 
+  // 3. Delete Driver
   const handleDeleteDriver = (driver) => {
     setConfirmDialog({
       open: true,
@@ -757,6 +833,143 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         setConfirmDialog(prev => ({ ...prev, open: false }));
       }
     });
+  };
+
+  // 4. Excel Export
+  const handleExportDriversExcel = () => {
+    if (filteredDrivers.length === 0) {
+      showToast('No driver records found to export.', 'warning');
+      return;
+    }
+
+    const exportRows = filteredDrivers.map((d, idx) => ({
+      'S.No': idx + 1,
+      'Driver Name': d.name,
+      'Mobile Number': d.phone,
+      'Emergency Contact': d.emergency_phone || '-',
+      'Commercial DL No': d.license_no,
+      'DL Expiry Date': d.license_expiry || '-',
+      'DL Category': d.license_category || 'TRANS',
+      'Assigned Truck': d.assigned_vehicle || 'Unassigned',
+      'Base Plant': d.assigned_plant || 'ALL',
+      'Status': d.status || 'Available',
+      'Aadhaar Number': d.aadhaar_no || '-',
+      'Bank Name': d.bank_name || '-',
+      'Account Number': d.bank_account_no || '-',
+      'IFSC Code': d.ifsc_code || '-',
+      'UPI ID': d.upi_id || '-'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Drivers_Directory');
+    XLSX.writeFile(wb, `BuddyFleets_Drivers_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    showToast('Driver directory exported to Excel!');
+    logAuditActivity('DRIVER', 'EXPORT', `Exported ${exportRows.length} driver records to Excel`);
+  };
+
+  // 5. Download Sample Excel Template
+  const handleDownloadDriverTemplate = () => {
+    const sampleData = [
+      {
+        'Driver Name': 'Rameshwar Gurjar',
+        'Mobile Number': '9829012345',
+        'Emergency Contact': '9829054321',
+        'Commercial DL No': 'RJ14-20180012345',
+        'DL Expiry Date (YYYY-MM-DD)': '2028-12-31',
+        'DL Category': 'TRANS (Heavy)',
+        'Assigned Truck': 'RJ-14-GH-1234',
+        'Base Plant Code': '12001',
+        'Status': 'Available',
+        'Aadhaar Number': '123456789012',
+        'Bank Name': 'SBI',
+        'Account Number': '30495839201',
+        'IFSC Code': 'SBIN0001234',
+        'UPI ID': 'ramesh@upi'
+      }
+    ];
+
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sample_Template');
+    XLSX.writeFile(wb, 'BuddyFleets_Driver_Import_Template.xlsx');
+    showToast('Sample template downloaded!');
+  };
+
+  // 6. Bulk Import from Excel
+  const handleImportDriversExcel = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsName = wb.SheetNames[0];
+        const rawData = XLSX.utils.sheet_to_json(wb.Sheets[wsName]);
+
+        if (rawData.length === 0) {
+          showToast('Excel file is empty!', 'warning');
+          return;
+        }
+
+        const validDrivers = [];
+        let duplicateCount = 0;
+
+        rawData.forEach(row => {
+          const dlNo = (row['Commercial DL No'] || row['license_no'] || '').toString().toUpperCase().trim();
+          const phone = (row['Mobile Number'] || row['phone'] || '').toString().trim();
+          const name = (row['Driver Name'] || row['name'] || '').toString().trim();
+
+          if (!name || !dlNo || !phone) return;
+
+          const isDup = drivers.some(d => d.license_no?.toUpperCase() === dlNo) ||
+                        validDrivers.some(d => d.license_no?.toUpperCase() === dlNo);
+
+          if (isDup) {
+            duplicateCount++;
+          } else {
+            validDrivers.push({
+              name,
+              phone,
+              emergency_phone: (row['Emergency Contact'] || '').toString().trim(),
+              license_no: dlNo,
+              license_expiry: row['DL Expiry Date (YYYY-MM-DD)'] || null,
+              license_category: row['DL Category'] || 'TRANS (Heavy)',
+              assigned_vehicle: (row['Assigned Truck'] || 'Unassigned').toString().toUpperCase().trim(),
+              assigned_plant: (row['Base Plant Code'] || 'ALL').toString().trim(),
+              aadhaar_no: (row['Aadhaar Number'] || '').toString().trim(),
+              bank_name: (row['Bank Name'] || '').toString().trim(),
+              bank_account_no: (row['Account Number'] || '').toString().trim(),
+              ifsc_code: (row['IFSC Code'] || '').toString().toUpperCase().trim(),
+              upi_id: (row['UPI ID'] || '').toString().trim(),
+              status: row['Status'] || 'Available',
+              created_by: currentUser?.name || 'SuperAdmin',
+              last_action_note: 'Bulk imported via Excel'
+            });
+          }
+        });
+
+        if (validDrivers.length === 0) {
+          showToast(`No new drivers imported. (${duplicateCount} duplicates found)`, 'warning');
+          return;
+        }
+
+        const { data, error } = await supabase.from('drivers').insert(validDrivers).select();
+        if (error) {
+          showToast('Error importing drivers: ' + error.message, 'error');
+        } else {
+          setDrivers(prev => [...(data || validDrivers), ...prev]);
+          showToast(`Imported ${validDrivers.length} drivers successfully! ${duplicateCount > 0 ? `(${duplicateCount} duplicates skipped)` : ''}`);
+          logAuditActivity('DRIVER', 'IMPORT', `Bulk imported ${validDrivers.length} commercial drivers from Excel`);
+        }
+      } catch (err) {
+        showToast('Error reading Excel file: ' + err.message, 'error');
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = '';
   };
 
   // ================= PROFILE UPDATE =================
@@ -789,19 +1002,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-const handleClearAllAuditLogs = () => {
+  const handleClearAllAuditLogs = () => {
     setConfirmDialog({
       open: true,
       title: 'Flush All Audit Trail Records',
       message: 'Are you sure you want to completely clear all system activity logs? This action cannot be undone.',
       onConfirm: () => {
-        // 1. Instant UI Clear & Dialog Close (Zero Delay)
         const previousLogs = [...auditLogs];
         setAuditLogs([]);
         setConfirmDialog(prev => ({ ...prev, open: false }));
         showToast('Audit trail logs cleared successfully!');
 
-        // 2. Non-blocking Background Database Purge
         (async () => {
           try {
             const { error } = await supabase
@@ -810,7 +1021,7 @@ const handleClearAllAuditLogs = () => {
               .gt('created_at', '1970-01-01');
 
             if (error) {
-              setAuditLogs(previousLogs); // Rollback on error
+              setAuditLogs(previousLogs);
               showToast('Error clearing logs: ' + error.message, 'error');
             }
           } catch (err) {
@@ -834,6 +1045,22 @@ const handleClearAllAuditLogs = () => {
       log.module?.toLowerCase().includes(query) ||
       log.ip_address?.includes(query)
     );
+  });
+
+  // Filtered Drivers Logic (Search + Plant + Status)
+  const filteredDrivers = drivers.filter(d => {
+    const query = driverSearch.toLowerCase().trim();
+    const matchesSearch = !query || (
+      d.name?.toLowerCase().includes(query) ||
+      d.phone?.includes(query) ||
+      d.license_no?.toLowerCase().includes(query) ||
+      d.assigned_vehicle?.toLowerCase().includes(query)
+    );
+
+    const matchesPlant = driverPlantFilter === 'ALL' || d.assigned_plant === driverPlantFilter;
+    const matchesStatus = driverStatusFilter === 'ALL' || d.status === driverStatusFilter;
+
+    return matchesSearch && matchesPlant && matchesStatus;
   });
 
   return (
@@ -997,7 +1224,7 @@ const handleClearAllAuditLogs = () => {
       </header>
 
       {/* Main Body */}
-      <div className="flex-1 flex overflow-hidden">
+<div className="flex-1 flex overflow-hidden">
         
         {/* Left Sidebar */}
         <aside className="w-72 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3.5 shrink-0 shadow-xl overflow-y-auto sticky top-0 h-[calc(100vh-65px)] select-none">
@@ -1475,80 +1702,270 @@ const handleClearAllAuditLogs = () => {
             </div>
           )}
 
-          {/* 4. DRIVERS MASTER */}
+          {/* 4. DRIVER DIRECTORY MASTER (UPGRADED WITH EXCEL, FILTERS & DL EXPIRY) */}
           {activeMenu === 'drivers' && (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              
+              {/* Header & Excel Action Bar */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs">
                 <div>
-                  <h2 className="text-xl font-black text-slate-900">Driver Directory</h2>
-                  <p className="text-xs text-slate-500">Commercial heavy licenses, phone directory, and truck pairing</p>
+                  <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                    Driver Directory
+                    <span className="text-xs bg-amber-50 text-amber-700 font-bold px-2.5 py-0.5 rounded-full border border-amber-200">
+                      {filteredDrivers.length} Drivers
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500">Commercial DL compliance, mobile pairing & vehicle allocations</p>
                 </div>
-                <button
-                  onClick={() => {
-                    setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
-                    setModalType('ADD_DRIVER');
-                  }}
-                  className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold px-4 py-2.5 rounded-2xl text-xs transition shadow-md shadow-orange-500/20 cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Add Driver</span>
-                </button>
+
+                {/* Bulk Actions & Add Button */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={handleDownloadDriverTemplate}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                    title="Download Sample Excel Template"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Sample Template</span>
+                  </button>
+
+                  <label className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-xs rounded-xl transition cursor-pointer">
+                    <Upload className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Import Excel</span>
+                    <input
+                      type="file"
+                      accept=".xlsx, .xls, .csv"
+                      onChange={handleImportDriversExcel}
+                      className="hidden"
+                    />
+                  </label>
+
+                  <button
+                    onClick={handleExportDriversExcel}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs rounded-xl transition cursor-pointer"
+                    title="Export filtered drivers to Excel"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Export Excel</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setSelectedDriver(null);
+                      setDriverForm({
+                        name: '',
+                        phone: '',
+                        emergency_phone: '',
+                        aadhaar_no: '',
+                        address: '',
+                        license_no: '',
+                        license_expiry: '',
+                        license_category: 'TRANS (Heavy)',
+                        assigned_vehicle: 'Unassigned',
+                        assigned_plant: 'ALL',
+                        experience_years: '',
+                        bank_account_no: '',
+                        ifsc_code: '',
+                        bank_name: '',
+                        upi_id: '',
+                        status: 'Available',
+                        photo_url: ''
+                      });
+                      setModalType('ADD_DRIVER');
+                    }}
+                    className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold px-4 py-2 rounded-xl text-xs transition shadow-md shadow-orange-500/20 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Add Driver</span>
+                  </button>
+                </div>
               </div>
 
+              {/* Search & Filter Bar */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+                
+                {/* Search Input */}
+                <div className="sm:col-span-6 relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Search by Driver Name, Mobile, DL No, Truck No..."
+                    value={driverSearch}
+                    onChange={(e) => setDriverSearch(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3.5 py-2 text-xs text-slate-900 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Base Plant Filter */}
+                <div className="sm:col-span-3">
+                  <select
+                    value={driverPlantFilter}
+                    onChange={(e) => setDriverPlantFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="ALL">🏢 All Base Plants</option>
+                    {sites.map(s => (
+                      <option key={s.id} value={s.code || s.site_code}>
+                        {s.name || s.site_name} ({s.code || s.site_code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Status Filter */}
+                <div className="sm:col-span-3">
+                  <select
+                    value={driverStatusFilter}
+                    onChange={(e) => setDriverStatusFilter(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-xs text-slate-900 font-medium focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="ALL">🚦 All Statuses</option>
+                    <option value="Available">🟢 Available</option>
+                    <option value="On Trip">🔵 On Trip</option>
+                    <option value="On Leave">🟡 On Leave</option>
+                    <option value="Blacklisted">🔴 Blacklisted</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Records Table */}
               <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50/80 text-slate-500 font-bold border-b border-slate-100">
+                    <thead className="bg-slate-50/90 text-slate-500 font-extrabold border-b border-slate-100">
                       <tr>
-                        <th className="p-4">Driver Name</th>
-                        <th className="p-4">Mobile Contact</th>
-                        <th className="p-4">Commercial DL No</th>
-                        <th className="p-4">Assigned Vehicle</th>
+                        <th className="p-4">Driver Profile</th>
+                        <th className="p-4">Mobile & Emergency</th>
+                        <th className="p-4">Commercial DL & Expiry</th>
+                        <th className="p-4">Assigned Truck & Plant</th>
                         <th className="p-4">Status</th>
                         <th className="p-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {drivers.length === 0 ? (
+                      {filteredDrivers.length === 0 ? (
                         <tr>
-                          <td colSpan="6" className="p-8 text-center text-slate-400">No drivers added yet.</td>
+                          <td colSpan="6" className="p-8 text-center text-slate-400">
+                            No drivers matching your filter criteria.
+                          </td>
                         </tr>
                       ) : (
-                        drivers.map((d) => (
-                          <tr key={d.id} className="hover:bg-amber-50/30 transition">
-                            <td className="p-4 font-bold text-slate-900">{d.name}</td>
-                            <td className="p-4 font-mono text-slate-600">{d.phone}</td>
-                            <td className="p-4 font-mono font-bold text-slate-700">{d.license_no}</td>
-                            <td className="p-4 font-mono font-bold text-blue-600">{d.assigned_vehicle}</td>
-                            <td className="p-4">
-                              <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                {d.status}
-                              </span>
-                            </td>
-                            <td className="p-4 text-right">
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  onClick={() => {
-                                    setSelectedDriver(d);
-                                    setDriverForm({ ...d });
-                                    setModalType('EDIT_DRIVER');
-                                  }}
-                                  className="p-1.5 bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 rounded-xl transition cursor-pointer"
-                                  title="Edit Driver"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteDriver(d)}
-                                  className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl transition cursor-pointer"
-                                  title="Delete Driver"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))
+                        filteredDrivers.map((d) => {
+                          const dlStatus = getDlExpiryStatus(d.license_expiry);
+
+                          return (
+                            <tr key={d.id} className="hover:bg-amber-50/20 transition">
+                              
+                              {/* Profile & Photo */}
+                              <td className="p-4 flex items-center gap-3">
+                                {d.photo_url ? (
+                                  <img
+                                    src={d.photo_url}
+                                    alt={d.name}
+                                    className="w-10 h-10 rounded-full object-cover border border-amber-300 shrink-0"
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-500 to-orange-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                                    {d.name ? d.name.charAt(0).toUpperCase() : 'D'}
+                                  </div>
+                                )}
+                                <div>
+                                  <p className="font-bold text-slate-900 text-sm">{d.name}</p>
+                                  <p className="text-[11px] text-slate-400">{d.experience_years ? `${d.experience_years} Yrs Exp` : 'Heavy Driver'}</p>
+                                </div>
+                              </td>
+
+                              {/* Contact Info */}
+                              <td className="p-4">
+                                <p className="font-mono font-bold text-slate-800">{d.phone}</p>
+                                <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
+                                  <PhoneCall className="w-3 h-3 text-rose-500" />
+                                  <span className="font-mono">{d.emergency_phone || 'No Emergency No'}</span>
+                                </p>
+                              </td>
+
+                              {/* DL & Expiry Badges */}
+                              <td className="p-4">
+                                <p className="font-mono font-black text-slate-900 text-[13px]">{d.license_no}</p>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] border ${dlStatus.color}`}>
+                                    {dlStatus.label}
+                                  </span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {d.license_expiry || 'N/A'}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Assigned Truck & Plant */}
+                              <td className="p-4">
+                                <span className="px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-mono font-black text-[11px] border border-blue-200">
+                                  {d.assigned_vehicle || 'Unassigned'}
+                                </span>
+                                <p className="text-[11px] text-slate-400 font-semibold mt-1">
+                                  Plant: <span className="text-slate-700">{d.assigned_plant === 'ALL' ? 'All Plants Pool' : d.assigned_plant}</span>
+                                </p>
+                              </td>
+
+                              {/* Operational Status */}
+                              <td className="p-4">
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
+                                  d.status === 'Available'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : d.status === 'On Trip'
+                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                    : d.status === 'On Leave'
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                                }`}>
+                                  {d.status || 'Available'}
+                                </span>
+                              </td>
+
+                              {/* Actions */}
+                              <td className="p-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      setSelectedDriver(d);
+                                      setDriverForm({
+                                        name: d.name || '',
+                                        phone: d.phone || '',
+                                        emergency_phone: d.emergency_phone || '',
+                                        aadhaar_no: d.aadhaar_no || '',
+                                        address: d.address || '',
+                                        license_no: d.license_no || '',
+                                        license_expiry: d.license_expiry || '',
+                                        license_category: d.license_category || 'TRANS (Heavy)',
+                                        assigned_vehicle: d.assigned_vehicle || 'Unassigned',
+                                        assigned_plant: d.assigned_plant || 'ALL',
+                                        experience_years: d.experience_years || '',
+                                        bank_account_no: d.bank_account_no || '',
+                                        ifsc_code: d.ifsc_code || '',
+                                        bank_name: d.bank_name || '',
+                                        upi_id: d.upi_id || '',
+                                        status: d.status || 'Available',
+                                        photo_url: d.photo_url || ''
+                                      });
+                                      setModalType('EDIT_DRIVER');
+                                    }}
+                                    className="p-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 rounded-xl transition cursor-pointer"
+                                    title="Edit Driver"
+                                  >
+                                    <Edit3 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteDriver(d)}
+                                    className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl transition cursor-pointer"
+                                    title="Delete Driver"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1606,7 +2023,6 @@ const handleClearAllAuditLogs = () => {
                         const userRoleLabel = USER_ROLES.find(r => r.value === u.role)?.label || u.role;
                         const plants = Array.isArray(u.assigned_plants) ? u.assigned_plants : (u.site_access ? [u.site_access] : ['ALL']);
                         
-                        // Self & SuperAdmin check
                         const isSelf = u.id === currentUser?.id || u.username?.toLowerCase() === currentUser?.username?.toLowerCase();
                         const isSuperAdmin = u.role === 'SUPER_ADMIN' || u.username?.toLowerCase() === 'admin';
                         const isProtected = isSelf || isSuperAdmin;
@@ -1663,7 +2079,6 @@ const handleClearAllAuditLogs = () => {
                               </div>
                             </td>
 
-                            {/* Status Button: Protected for self / Super Admin */}
                             <td className="p-4">
                               <button
                                 disabled={isProtected}
@@ -1681,7 +2096,6 @@ const handleClearAllAuditLogs = () => {
                               </button>
                             </td>
 
-                            {/* Actions Column */}
                             <td className="p-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
@@ -1714,7 +2128,6 @@ const handleClearAllAuditLogs = () => {
                                   <Key className="w-3.5 h-3.5" />
                                 </button>
 
-                                {/* Delete Button: Protected for Self / Super Admin */}
                                 <button
                                   disabled={isProtected}
                                   onClick={() => handleDeleteUser(u)}
@@ -2567,6 +2980,284 @@ const handleClearAllAuditLogs = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Add / Edit Driver Modal (Complete 3-Section Form) */}
+     {(modalType === 'ADD_DRIVER' || modalType === 'EDIT_DRIVER') && (
+     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+       <div className="bg-white rounded-3xl w-full max-w-2xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
+        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+        <h3 className="font-black text-base text-slate-900">
+          {modalType === 'EDIT_DRIVER' ? 'Edit Commercial Driver Profile' : 'Register Commercial Driver'}
+        </h3>
+        <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
+      </div>
+
+      <form onSubmit={modalType === 'EDIT_DRIVER' ? handleUpdateDriver : handleCreateDriver} className="space-y-4 text-xs">
+        
+        {/* Photo Upload Row */}
+        <div className="flex items-center gap-4 p-3 bg-amber-50/50 rounded-2xl border border-amber-100">
+          <div className="relative">
+            {driverForm.photo_url ? (
+              <img
+                src={driverForm.photo_url}
+                alt="Driver Preview"
+                className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-sm"
+              />
+            ) : (
+              <div className="w-14 h-14 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-400">
+                <Camera className="w-6 h-6" />
+              </div>
+            )}
+            {driverForm.photo_url && (
+              <button
+                type="button"
+                onClick={() => setDriverForm(prev => ({ ...prev, photo_url: '' }))}
+                className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow-xs cursor-pointer"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1">
+            <label className="text-slate-800 font-bold block mb-1">Driver Photo (Optional)</label>
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl cursor-pointer shadow-2xs">
+              <Upload className="w-3.5 h-3.5 text-amber-600" />
+              <span>Upload Photo</span>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => handlePhotoUpload(e, 'driver')}
+                className="hidden"
+              />
+            </label>
+            <p className="text-[10px] text-slate-400 mt-1">PNG, JPG up to 2MB</p>
+          </div>
+        </div>
+
+        {/* SECTION 1: Personal Info */}
+        <div className="space-y-3">
+          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">1. Personal & Contact Details</p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Driver Full Name *</label>
+              <input
+                required
+                placeholder="e.g. Rameshwar Gurjar"
+                value={driverForm.name}
+                onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Mobile Number *</label>
+              <input
+                required
+                maxLength={10}
+                placeholder="10-digit Mobile"
+                value={driverForm.phone}
+                onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Emergency Contact *</label>
+              <input
+                required
+                maxLength={10}
+                placeholder="Family / Guardian No"
+                value={driverForm.emergency_phone}
+                onChange={(e) => setDriverForm({ ...driverForm, emergency_phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Aadhaar Card No (Optional)</label>
+              <input
+                maxLength={12}
+                placeholder="12-digit Aadhaar Number"
+                value={driverForm.aadhaar_no}
+                onChange={(e) => setDriverForm({ ...driverForm, aadhaar_no: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Driving Experience (Years)</label>
+              <input
+                type="number"
+                step="0.5"
+                placeholder="e.g. 5"
+                value={driverForm.experience_years}
+                onChange={(e) => setDriverForm({ ...driverForm, experience_years: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 2: License & Operations */}
+        <div className="space-y-3 pt-2 border-t border-slate-100">
+          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">2. Commercial License & Allocations</p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Commercial DL No *</label>
+              <input
+                required
+                placeholder="e.g. RJ14-20180012345"
+                value={driverForm.license_no}
+                onChange={(e) => setDriverForm({ ...driverForm, license_no: e.target.value.toUpperCase() })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono uppercase focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">DL Expiry Date *</label>
+              <input
+                required
+                type="date"
+                value={driverForm.license_expiry}
+                onChange={(e) => setDriverForm({ ...driverForm, license_expiry: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">DL Category *</label>
+              <select
+                value={driverForm.license_category}
+                onChange={(e) => setDriverForm({ ...driverForm, license_category: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                required
+              >
+                <option value="TRANS (Heavy)">TRANS (Heavy Bulkers)</option>
+                <option value="HMV">HMV (Heavy Motor Vehicle)</option>
+                <option value="LMV-Commercial">LMV-Commercial</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Assigned Truck</label>
+              <select
+                value={driverForm.assigned_vehicle}
+                onChange={(e) => setDriverForm({ ...driverForm, assigned_vehicle: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
+              >
+                <option value="Unassigned">-- Unassigned / Pool --</option>
+                {vehicles.map(v => (
+                  <option key={v.id} value={v.vehicle_no}>{v.vehicle_no} ({v.vehicle_type})</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Base Plant / Site *</label>
+              <select
+                value={driverForm.assigned_plant}
+                onChange={(e) => setDriverForm({ ...driverForm, assigned_plant: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                required
+              >
+                <option value="ALL">All Plants Pool</option>
+                {sites.map(s => (
+                  <option key={s.id} value={s.code || s.site_code}>{s.name || s.site_name} ({s.code || s.site_code})</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Driver Status *</label>
+              <select
+                value={driverForm.status}
+                onChange={(e) => setDriverForm({ ...driverForm, status: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                required
+              >
+                <option value="Available">Available (Duty Ready)</option>
+                <option value="On Trip">On Trip (In Transit)</option>
+                <option value="On Leave">On Leave / Rest</option>
+                <option value="Blacklisted">Blacklisted</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION 3: Bank & Payouts */}
+        <div className="space-y-3 pt-2 border-t border-slate-100">
+          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">3. Bank & Payout Details (Optional)</p>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Bank Name</label>
+              <input
+                placeholder="e.g. SBI"
+                value={driverForm.bank_name}
+                onChange={(e) => setDriverForm({ ...driverForm, bank_name: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Account Number</label>
+              <input
+                placeholder="Account No"
+                value={driverForm.bank_account_no}
+                onChange={(e) => setDriverForm({ ...driverForm, bank_account_no: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">IFSC Code</label>
+              <input
+                placeholder="SBIN0001234"
+                value={driverForm.ifsc_code}
+                onChange={(e) => setDriverForm({ ...driverForm, ifsc_code: e.target.value.toUpperCase() })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono uppercase focus:outline-none focus:border-amber-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">UPI ID</label>
+              <input
+                placeholder="name@upi"
+                value={driverForm.upi_id}
+                onChange={(e) => setDriverForm({ ...driverForm, upi_id: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => setModalType(null)}
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 cursor-pointer"
+          >
+            {modalType === 'EDIT_DRIVER' ? 'Update Driver Profile' : 'Register Driver'}
+          </button>
+         </div>
+        </form>
+      </div>
+    </div>
       )}
 
     </div>
