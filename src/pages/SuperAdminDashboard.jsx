@@ -27,11 +27,9 @@ import {
   AlertCircle,
   Eye,
   Globe,
-  Monitor,
   Clock,
   Shield,
-  Search,
-  RotateCcw
+  Search
 } from 'lucide-react';
 import { INDIAN_STATES, INDIA_STATES_DISTRICTS, fetchLocationByPincode } from '../utils/indiaGeoData';
 
@@ -119,8 +117,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         user_agent: navigator.userAgent || 'Web Console Client',
         metadata: {
           ...metadata,
-          timestamp_iso: new Date().toISOString(),
-          screen_resolution: `${window.screen.width}x${window.screen.height}`
+          timestamp_iso: new Date().toISOString()
         }
       }]);
     } catch (err) {
@@ -265,11 +262,13 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error: ' + error.message, 'error');
     } else {
-      // Instant Live State Update
       const savedItem = data || { ...newSitePayload, id: crypto.randomUUID(), created_at: new Date().toISOString() };
       setSites(prev => [savedItem, ...prev]);
 
-      await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteForm.site_name} (${siteCode}) at ${siteForm.district}, ${siteForm.state}`, newSitePayload);
+      await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteForm.site_name} (${siteCode}) at ${siteForm.district}, ${siteForm.state}`, {
+        site_name: siteForm.site_name,
+        code: siteCode
+      });
       
       setSiteForm({
         site_name: '',
@@ -307,7 +306,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       updated_at: new Date().toISOString()
     };
 
-    // Instant local state update
     setSites(prev => prev.map(s => s.id === selectedSite.id ? { ...s, ...updatedData } : s));
 
     const { error } = await supabase
@@ -316,15 +314,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', selectedSite.id);
 
     if (error) {
-      fetchAllData(); // Rollback on error
+      fetchAllData();
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('SITE', 'UPDATE', `Updated details for plant ${siteForm.site_name} (${selectedSite.code || selectedSite.site_code})`, {
-        site_id: selectedSite.id,
-        new_name: siteForm.site_name,
-        new_district: siteForm.district,
-        new_state: siteForm.state
-      });
+      await logAuditActivity('SITE', 'UPDATE', `Updated details for plant ${siteForm.site_name} (${selectedSite.code || selectedSite.site_code})`);
       setModalType(null);
       setSelectedSite(null);
       showToast('Plant details updated!');
@@ -338,19 +331,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       title: 'Delete Plant Site',
       message: `Are you sure you want to delete ${site.name || site.site_name} (${site.code || site.site_code})? This cannot be undone.`,
       onConfirm: async () => {
-        // Instant removal
         setSites(prev => prev.filter(s => s.id !== site.id));
 
         const { error } = await supabase.from('sites').delete().eq('id', site.id);
         if (error) {
-          fetchAllData(); // Rollback
+          fetchAllData();
           showToast('Error deleting plant: ' + error.message, 'error');
         } else {
-          await logAuditActivity('SITE', 'DELETE', `Deleted plant location ${site.name || site.site_name} (${site.code || site.site_code})`, {
-            site_id: site.id,
-            site_name: site.name || site.site_name,
-            code: site.code || site.site_code
-          });
+          await logAuditActivity('SITE', 'DELETE', `Deleted plant location ${site.name || site.site_name} (${site.code || site.site_code})`);
           showToast(`Plant ${site.name || site.site_name} deleted!`);
         }
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -361,8 +349,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   // 4. Toggle Site Status (Instant UI Switch)
   const handleToggleSiteStatus = async (site) => {
     const nextStatus = !site.is_active;
-
-    // Instant Toggle
     setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: nextStatus } : s));
 
     const { error } = await supabase
@@ -374,7 +360,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       .eq('id', site.id);
 
     if (error) {
-      setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: !nextStatus } : s)); // Rollback
+      setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: !nextStatus } : s));
       showToast('Error: ' + error.message, 'error');
     } else {
       await logAuditActivity('SITE', 'UPDATE', `Switched plant ${site.name || site.site_name} status to ${nextStatus ? 'OPERATIONAL' : 'INACTIVE'}`);
@@ -382,7 +368,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // ================= FLEET / VEHICLE MASTER LOGIC =================
+  // ================= FLEET MASTER LOGIC =================
   const handleCreateVehicle = async (e) => {
     e.preventDefault();
     const vehicleNo = vehicleForm.vehicle_no.toUpperCase().trim();
@@ -400,7 +386,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       showToast('Error: ' + error.message, 'error');
     } else {
       setVehicles(prev => [data || { ...newVehicle, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
-      await logAuditActivity('FLEET', 'CREATE', `Registered truck ${vehicleNo} (${vehicleForm.vehicle_type} - ${vehicleForm.capacity_mt} MT)`, newVehicle);
+      await logAuditActivity('FLEET', 'CREATE', `Registered truck ${vehicleNo} (${vehicleForm.vehicle_type} - ${vehicleForm.capacity_mt} MT)`);
       setVehicleForm({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
       setModalType(null);
       showToast('Vehicle registered into fleet inventory!');
@@ -436,7 +422,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       showToast('Error: ' + error.message, 'error');
     } else {
       setUsers(prev => [data || { ...newUserPayload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
-      await logAuditActivity('USER', 'CREATE', `Provisioned account @${cleanUser} for ${userForm.name} (${userForm.role})`, newUserPayload);
+      await logAuditActivity('USER', 'CREATE', `Provisioned account @${cleanUser} for ${userForm.name} (${userForm.role})`);
       setUserForm({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
       setModalType(null);
       showToast(`User @${cleanUser} provisioned!`);
@@ -468,12 +454,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       fetchAllData();
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`, {
-        user_id: selectedUser.id,
-        new_name: userForm.name,
-        new_role: userForm.role,
-        new_branch: userForm.branch
-      });
+      await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`);
       setModalType(null);
       setSelectedUser(null);
       showToast('User details updated!');
@@ -498,11 +479,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           fetchAllData();
           showToast('Error deleting user: ' + error.message, 'error');
         } else {
-          await logAuditActivity('USER', 'DELETE', `Deleted staff account @${user.username} (${user.name})`, {
-            deleted_user_id: user.id,
-            name: user.name,
-            role: user.role
-          });
+          await logAuditActivity('USER', 'DELETE', `Deleted staff account @${user.username} (${user.name})`);
           showToast(`User @${user.username} deleted successfully!`);
         }
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -525,10 +502,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (error) {
       showToast('Error resetting password: ' + error.message, 'error');
     } else {
-      await logAuditActivity('AUTH', 'PASSWORD_RESET', `Admin reset credentials for user @${selectedUser.username}`, {
-        target_user: selectedUser.username,
-        reset_by: currentUser?.username
-      });
+      await logAuditActivity('AUTH', 'PASSWORD_RESET', `Admin reset credentials for user @${selectedUser.username}`);
       showToast(`Password updated for user: @${selectedUser.username}!`);
       setResetPassValue('');
       setSelectedUser(null);
@@ -538,8 +512,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
   const handleToggleUserStatus = async (user) => {
     const nextStatus = !user.is_active;
-
-    // Instant UI Toggle
     setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: nextStatus } : u));
 
     const { error } = await supabase
@@ -561,7 +533,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // ================= DRIVER DIRECTORY LOGIC =================
+  // ================= DRIVER LOGIC =================
   const handleCreateDriver = async (e) => {
     e.preventDefault();
     const newDriverPayload = {
@@ -579,7 +551,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       showToast('Error: ' + error.message, 'error');
     } else {
       setDrivers(prev => [data || { ...newDriverPayload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
-      await logAuditActivity('DRIVER', 'CREATE', `Added commercial driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`, newDriverPayload);
+      await logAuditActivity('DRIVER', 'CREATE', `Added commercial driver ${driverForm.name} (DL: ${driverForm.license_no.toUpperCase()})`);
       setDriverForm({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
       setModalType(null);
       showToast(`Driver ${driverForm.name} registered!`);
@@ -609,13 +581,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       fetchAllData();
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('DRIVER', 'UPDATE', `Updated driver ${driverForm.name} (DL: ${driverForm.license_no})`, {
-        driver_id: selectedDriver.id,
-        name: driverForm.name,
-        phone: driverForm.phone,
-        license_no: driverForm.license_no,
-        assigned_vehicle: driverForm.assigned_vehicle
-      });
+      await logAuditActivity('DRIVER', 'UPDATE', `Updated driver ${driverForm.name} (DL: ${driverForm.license_no})`);
       setModalType(null);
       setSelectedDriver(null);
       showToast('Driver details updated!');
@@ -635,11 +601,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           fetchAllData();
           showToast('Error deleting driver: ' + error.message, 'error');
         } else {
-          await logAuditActivity('DRIVER', 'DELETE', `Deleted commercial driver ${driver.name} (DL: ${driver.license_no})`, {
-            driver_id: driver.id,
-            name: driver.name,
-            license_no: driver.license_no
-          });
+          await logAuditActivity('DRIVER', 'DELETE', `Deleted commercial driver ${driver.name} (DL: ${driver.license_no})`);
           showToast(`Driver ${driver.name} removed successfully!`);
         }
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -647,7 +609,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     });
   };
 
-  // ================= PROFILE & LOGS LOGIC =================
+  // ================= PROFILE & AUDIT LOGS =================
   const handleUpdateSelfProfile = async (e) => {
     e.preventDefault();
     const { error } = await supabase
@@ -1656,7 +1618,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
 
                 <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                  {/* Search Bar */}
                   <div className="relative flex-1 sm:w-64">
                     <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                     <input
@@ -1668,7 +1629,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     />
                   </div>
 
-                  {/* Manual Clear All Logs Button */}
                   <button
                     onClick={handleClearAllAuditLogs}
                     className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-2xl text-xs font-bold transition cursor-pointer shadow-xs shrink-0"
@@ -1704,25 +1664,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       ) : (
                         filteredAuditLogs.map((log) => (
                           <tr key={log.id} className="hover:bg-slate-50/80 transition group">
-                            {/* Timestamp */}
                             <td className="p-3.5 font-mono text-[11px] text-slate-500">
                               {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} • {new Date(log.created_at).toLocaleDateString()}
                             </td>
 
-                            {/* User Profile */}
                             <td className="p-3.5">
                               <span className="font-extrabold text-slate-900">{log.performed_by}</span>
                               <span className="text-slate-400 text-[11px] font-mono ml-1.5">(@{log.performed_by_username || 'system'})</span>
                             </td>
 
-                            {/* IP Address */}
                             <td className="p-3.5">
-                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
                                 {log.ip_address || '127.0.0.1'}
                               </span>
                             </td>
 
-                            {/* Module & Action Pill */}
                             <td className="p-3.5">
                               <span className={`px-2 py-0.5 rounded-md font-mono font-black text-[10px] ${
                                 log.action_type === 'DELETE' 
@@ -1737,12 +1693,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                               </span>
                             </td>
 
-                            {/* Single Line Description */}
                             <td className="p-3.5 max-w-md truncate text-slate-800 font-medium" title={log.description}>
                               {log.description}
                             </td>
 
-                            {/* Action Button */}
                             <td className="p-3.5 text-right">
                               <button
                                 onClick={() => setSelectedAuditLog(log)}
@@ -1766,11 +1720,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       </div>
 
       {/* =========================================================================
-          FORENSIC AUDIT DETAILS DRAWER / MODAL
+          FORENSIC AUDIT DETAILS DRAWER / MODAL (CLEANED UP - NO RAW CODE BLOCK)
       ========================================================================== */}
       {selectedAuditLog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
             
             {/* Modal Header */}
             <div className="flex justify-between items-center border-b border-slate-100 pb-3.5">
@@ -1802,7 +1756,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               
               <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Event Summary</span>
-                <p className="font-bold text-slate-900 text-sm">{selectedAuditLog.description}</p>
+                <p className="font-bold text-slate-900 text-sm leading-snug">{selectedAuditLog.description}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1836,25 +1790,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* User Agent / Device Signature */}
-              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
-                <div className="flex items-center gap-1.5 text-slate-400 text-[10px] font-bold uppercase">
-                  <Monitor className="w-3.5 h-3.5" />
-                  <span>Device Signature & Browser Agent</span>
-                </div>
-                <p className="font-mono text-[11px] text-slate-600 break-all">{selectedAuditLog.user_agent || 'Standard Web Console Client'}</p>
-              </div>
-
-              {/* Payload Metadata JSON */}
-              {selectedAuditLog.metadata && Object.keys(selectedAuditLog.metadata).length > 0 && (
-                <div className="p-3 bg-slate-900 text-slate-200 rounded-2xl space-y-1 font-mono text-[11px] overflow-hidden">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Audit Payload (State Diff)</span>
-                  <pre className="overflow-x-auto p-2 bg-slate-950/80 rounded-xl text-emerald-400">
-                    {JSON.stringify(selectedAuditLog.metadata, null, 2)}
-                  </pre>
-                </div>
-              )}
-
             </div>
 
             {/* Close Button */}
@@ -1886,8 +1821,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
 
             <form onSubmit={modalType === 'EDIT_SITE' ? handleUpdateSite : handleCreateSite} className="space-y-3.5 text-xs">
-              
-              {/* Row 1: Plant Name & Code */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Plant / Site Name *</label>
@@ -1915,7 +1848,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* Row 2: Plant Type */}
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Plant Type *</label>
                 <select
@@ -1931,7 +1863,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </select>
               </div>
 
-              {/* Row 3: Pincode, State & District with Live Auto Detect */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">
@@ -1980,7 +1911,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* Row 4: Dispatch Address */}
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Dispatch / Plant Address</label>
                 <textarea
@@ -1992,7 +1922,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 />
               </div>
 
-              {/* Row 5: Manager Details */}
               <div className="pt-2 border-t border-slate-100">
                 <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Plant In-Charge / Contact (Optional)</p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -2029,7 +1958,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* Modal Buttons */}
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"

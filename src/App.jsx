@@ -23,7 +23,7 @@ export default function App() {
     }
   };
 
-  // 1. Session Clear & Forensic Logout
+  // 1. Session Clear & Instant Direct Sign-Out
   const handleLogout = useCallback(async (isAutoTimeout = false) => {
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
 
@@ -37,34 +37,40 @@ export default function App() {
       } catch (e) {}
     }
 
-    // Insert Live Forensic Logout Audit Log
-    if (userToLog) {
-      try {
-        const ip = await getClientIp();
-        await supabase.from('audit_logs').insert([{
-          module: 'AUTH',
-          action_type: isAutoTimeout ? 'TIMEOUT_LOGOUT' : 'LOGOUT',
-          description: isAutoTimeout
-            ? `User @${userToLog.username} (${userToLog.name}) auto-logged out due to 30 mins inactivity`
-            : `User @${userToLog.username} (${userToLog.name}) signed out securely`,
-          performed_by: userToLog.name,
-          performed_by_username: userToLog.username,
-          ip_address: ip,
-          user_agent: navigator.userAgent || 'Web Console Client',
-          metadata: {
-            role: userToLog.role,
-            reason: isAutoTimeout ? 'INACTIVITY_TIMEOUT_30M' : 'USER_TRIGGERED_SIGNOUT',
-            session_ended_at: new Date().toISOString()
-          }
-        }]);
-      } catch (err) {
-        console.error('Logout audit log error:', err);
-      }
-    }
-
+    // 1. Instantly switch UI to Login Page (Zero Delay, No intermediate Home View)
+    setCurrentUser(null);
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(ACTIVE_TAB_KEY);
-    setCurrentUser(null);
+    sessionStorage.clear();
+
+    // 2. Background Task: Clean Supabase Auth & Log Audit Entry
+    (async () => {
+      try {
+        await supabase.auth.signOut().catch(() => {});
+
+        if (userToLog) {
+          const ip = await getClientIp();
+          await supabase.from('audit_logs').insert([{
+            module: 'AUTH',
+            action_type: isAutoTimeout ? 'TIMEOUT_LOGOUT' : 'LOGOUT',
+            description: isAutoTimeout
+              ? `User @${userToLog.username} (${userToLog.name}) auto-logged out due to 30 mins inactivity`
+              : `User @${userToLog.username} (${userToLog.name}) signed out securely`,
+            performed_by: userToLog.name,
+            performed_by_username: userToLog.username,
+            ip_address: ip,
+            user_agent: navigator.userAgent || 'Web Console Client',
+            metadata: {
+              role: userToLog.role,
+              reason: isAutoTimeout ? 'INACTIVITY_TIMEOUT_30M' : 'USER_TRIGGERED_SIGNOUT',
+              session_ended_at: new Date().toISOString()
+            }
+          }]);
+        }
+      } catch (err) {
+        console.error('Background logout telemetry error:', err);
+      }
+    })();
   }, [currentUser]);
 
   // 2. Reset Inactivity Timer on User Interaction
@@ -95,10 +101,10 @@ export default function App() {
         const savedSession = localStorage.getItem(SESSION_KEY);
         if (savedSession) {
           const { user, lastActivity } = JSON.parse(savedSession);
-          const timeElapsed = Date.now() - lastActivity;
+          const timeElapsed = Date.now() - (lastActivity || 0);
 
           if (timeElapsed < INACTIVITY_TIMEOUT_MS) {
-            // Root Admin Hardcoded fallback check
+            // Root Admin Fallback Check
             if (user.id === 'root-admin' || user.username === 'admin') {
               setCurrentUser(user);
               resetInactivityTimer();
@@ -106,7 +112,7 @@ export default function App() {
               return;
             }
 
-            // Re-verify if user is still active in database
+            // Verify active status in Database
             const { data, error } = await supabase
               .from('app_users')
               .select('*')
@@ -134,7 +140,7 @@ export default function App() {
     checkSavedSession();
   }, [handleLogout, resetInactivityTimer]);
 
-  // 4. Attach Activity Event Listeners (Mouse, Keyboard, Touch, Scroll)
+  // 4. Attach Activity Event Listeners
   useEffect(() => {
     if (!currentUser) return;
 
@@ -152,7 +158,6 @@ export default function App() {
 
   // 5. Login Handler
   const handleLoginSuccess = (authenticatedUser) => {
-    // Save persistent session
     localStorage.setItem(
       SESSION_KEY,
       JSON.stringify({ user: authenticatedUser, lastActivity: Date.now() })
@@ -181,12 +186,12 @@ export default function App() {
     );
   }
 
-  // View 1: Not Authenticated (Login Page)
+  // View 1: Not Authenticated (Always Directly Renders Login Page)
   if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
-  // View 2: Authenticated ERP Console
+  // View 2: Authenticated Console
   return (
     <SuperAdminDashboard
       currentUser={currentUser}
