@@ -264,24 +264,58 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   };
 
   const handleCreateSite = async (e) => {
-    e.preventDefault();
-    const siteCode = siteForm.site_code.toUpperCase().trim();
-    const newSitePayload = {
-      name: siteForm.site_name.trim(),
-      site_name: siteForm.site_name.trim(),
-      code: siteCode,
-      site_code: siteCode,
-      plant_type: siteForm.plant_type,
-      pincode: siteForm.pincode,
-      state: siteForm.state,
-      district: siteForm.district,
-      address: siteForm.address.trim(),
-      manager_name: siteForm.manager_name.trim(),
-      manager_phone: siteForm.manager_phone.trim(),
-      manager_email: siteForm.manager_email.trim(),
-      is_active: true,
-      created_by: currentUser?.name || 'SuperAdmin'
-    };
+  e.preventDefault();
+  const siteCode = siteForm.site_code.toUpperCase().trim();
+  const siteName = siteForm.site_name.trim();
+
+  const newSitePayload = {
+    name: siteName,
+    code: siteCode,
+    plant_type: siteForm.plant_type,
+    pincode: siteForm.pincode,
+    state: siteForm.state,
+    district: siteForm.district,
+    address: siteForm.address.trim(),
+    manager_name: siteForm.manager_name.trim(),
+    manager_phone: siteForm.manager_phone.trim(),
+    manager_email: siteForm.manager_email.trim(),
+    is_active: true,
+    created_by: currentUser?.name || 'SuperAdmin'
+  };
+
+  const { data, error } = await supabase
+    .from('sites')
+    .insert([newSitePayload])
+    .select()
+    .single();
+
+    if (error) {
+    showToast('Error: ' + error.message, 'error');
+   } else {
+    const savedItem = data || { ...newSitePayload, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+    setSites(prev => [savedItem, ...prev]);
+
+    await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteName} (${siteCode}) at ${siteForm.district}, ${siteForm.state}`, {
+      site_name: siteName,
+      code: siteCode
+    });
+    
+    setSiteForm({
+      site_name: '',
+      site_code: '',
+      plant_type: 'Loose Cement',
+      pincode: '',
+      state: '',
+      district: '',
+      address: '',
+      manager_name: '',
+      manager_phone: '',
+      manager_email: ''
+    });
+    setModalType(null);
+    showToast('Plant site created successfully!');
+   }
+  };
 
     const { data, error } = await supabase
       .from('sites')
