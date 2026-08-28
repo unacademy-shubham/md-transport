@@ -67,6 +67,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedDriver, setSelectedDriver] = useState(null);
   const [selectedSite, setSelectedSite] = useState(null);
+  const [plantDropdownOpen, setPlantDropdownOpen] = useState(false);
 
   // Custom Confirm Dialog
   const [confirmDialog, setConfirmDialog] = useState({
@@ -96,7 +97,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
   const [vehicleForm, setVehicleForm] = useState({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
   
-  // Updated User Form
+  // User Form with full profile fields
   const [userForm, setUserForm] = useState({
     username: '',
     password_hash: '',
@@ -110,7 +111,15 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
   const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
   const [resetPassValue, setResetPassValue] = useState('');
-  const [profileForm, setProfileForm] = useState({ name: currentUser?.name || 'Admin', password: currentUser?.password_hash || '' });
+  
+  // Self Profile Form with photo, phone, email & password
+  const [profileForm, setProfileForm] = useState({
+    name: currentUser?.name || 'Admin',
+    phone: currentUser?.phone || '',
+    email: currentUser?.email || '',
+    photo_url: currentUser?.photo_url || '',
+    password: currentUser?.password_hash || ''
+  });
 
   // 1. Fetch Client IP on Mount
   useEffect(() => {
@@ -254,7 +263,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 1. Create Site (Instant Optimistic UI)
   const handleCreateSite = async (e) => {
     e.preventDefault();
     const siteCode = siteForm.site_code.toUpperCase().trim();
@@ -309,7 +317,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 2. Update Site (Instant UI Update)
   const handleUpdateSite = async (e) => {
     e.preventDefault();
     if (!selectedSite) return;
@@ -346,7 +353,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // 3. Delete Site (Instant UI Update)
   const handleDeleteSite = (site) => {
     setConfirmDialog({
       open: true,
@@ -368,7 +374,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     });
   };
 
-  // 4. Toggle Site Status (Instant UI Switch)
   const handleToggleSiteStatus = async (site) => {
     const nextStatus = !site.is_active;
     setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: nextStatus } : s));
@@ -416,7 +421,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   };
 
   // ================= USER PHOTO UPLOAD & MULTI-PLANT HELPERS =================
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = (e, formType = 'user') => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 2 * 1024 * 1024) {
@@ -425,7 +430,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       }
       const reader = new FileReader();
       reader.onloadend = () => {
-        setUserForm(prev => ({ ...prev, photo_url: reader.result }));
+        if (formType === 'profile') {
+          setProfileForm(prev => ({ ...prev, photo_url: reader.result }));
+        } else {
+          setUserForm(prev => ({ ...prev, photo_url: reader.result }));
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -495,6 +504,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         assigned_plants: ['ALL']
       });
       setModalType(null);
+      setPlantDropdownOpen(false);
       showToast(`User @${cleanUser} provisioned!`);
     }
   };
@@ -529,6 +539,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`);
       setModalType(null);
       setSelectedUser(null);
+      setPlantDropdownOpen(false);
       showToast('User details updated!');
     }
   };
@@ -681,18 +692,23 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     });
   };
 
-  // ================= PROFILE & AUDIT LOGS =================
+  // ================= PROFILE UPDATE =================
   const handleUpdateSelfProfile = async (e) => {
     e.preventDefault();
+    const updatedProfilePayload = {
+      name: profileForm.name.trim(),
+      phone: profileForm.phone.trim(),
+      email: profileForm.email.trim(),
+      photo_url: profileForm.photo_url || null,
+      password_hash: profileForm.password,
+      updated_by: currentUser?.name || 'SuperAdmin',
+      last_action_note: 'Self-profile details updated',
+      updated_at: new Date().toISOString()
+    };
+
     const { error } = await supabase
       .from('app_users')
-      .update({
-        name: profileForm.name,
-        password_hash: profileForm.password,
-        updated_by: currentUser?.name || 'SuperAdmin',
-        last_action_note: 'Self-profile details updated',
-        updated_at: new Date().toISOString()
-      })
+      .update(updatedProfilePayload)
       .eq('id', currentUser?.id);
 
     if (error) {
@@ -700,7 +716,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     } else {
       await logAuditActivity('USER', 'UPDATE', `Super Admin updated personal root profile`);
       showToast('Your profile has been updated!');
-      if (onUserUpdate) onUserUpdate({ ...currentUser, name: profileForm.name, password_hash: profileForm.password });
+      if (onUserUpdate) onUserUpdate({ ...currentUser, ...updatedProfilePayload });
       setModalType(null);
       setUserMenuOpen(false);
     }
@@ -859,7 +875,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </div>
 
                   <button
-                    onClick={() => { setModalType('EDIT_PROFILE'); setUserMenuOpen(false); }}
+                    onClick={() => {
+                      setProfileForm({
+                        name: currentUser?.name || 'Admin',
+                        phone: currentUser?.phone || '',
+                        email: currentUser?.email || '',
+                        photo_url: currentUser?.photo_url || '',
+                        password: currentUser?.password_hash || ''
+                      });
+                      setModalType('EDIT_PROFILE');
+                      setUserMenuOpen(false);
+                    }}
                     className="w-full text-left px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-800 hover:text-cyan-400 flex items-center gap-2 font-medium cursor-pointer transition"
                   >
                     <Edit3 className="w-4 h-4 text-slate-400" />
@@ -1453,7 +1479,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 5. USER & STAFF ACCOUNTS (UPDATED WITH ROLES & ASSIGNED PLANTS) */}
+          {/* 5. USER & STAFF ACCOUNTS */}
           {activeMenu === 'users' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1576,6 +1602,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                       assigned_plants: Array.isArray(u.assigned_plants) ? u.assigned_plants : (u.site_access ? [u.site_access] : ['ALL']),
                                       password_hash: ''
                                     }); 
+                                    setPlantDropdownOpen(false);
                                     setModalType('EDIT_USER'); 
                                   }}
                                   className="p-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-xl transition cursor-pointer"
@@ -1713,7 +1740,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                               <span className="text-slate-400 text-[11px] font-mono ml-1.5">(@{log.performed_by_username || 'system'})</span>
                             </td>
                             <td className="p-3.5">
-                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
                                 {log.ip_address || '127.0.0.1'}
                               </span>
                             </td>
@@ -2070,7 +2097,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 3. ADD / EDIT USER MODAL */}
+      {/* 3. ADD / EDIT USER MODAL (MANDATORY FIELDS + DROPDOWN MULTI-SELECT) */}
       {(modalType === 'ADD_USER' || modalType === 'EDIT_USER') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
@@ -2078,12 +2105,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               <h3 className="font-black text-base text-slate-900">
                 {modalType === 'EDIT_USER' ? 'Edit Staff User Details' : 'Create Staff User'}
               </h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
+              <button 
+                onClick={() => { setModalType(null); setPlantDropdownOpen(false); }} 
+                className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer"
+              >
+                ✕
+              </button>
             </div>
 
             <form onSubmit={modalType === 'EDIT_USER' ? handleUpdateUser : handleCreateUser} className="space-y-3.5 text-xs">
               
-              {/* Photo Upload Row */}
+              {/* Photo Upload Row (Optional) */}
               <div className="flex items-center gap-4 p-3 bg-purple-50/50 rounded-2xl border border-purple-100">
                 <div className="relative">
                   {userForm.photo_url ? (
@@ -2117,7 +2149,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     <input
                       type="file"
                       accept="image/*"
-                      onChange={handlePhotoUpload}
+                      onChange={(e) => handlePhotoUpload(e, 'user')}
                       className="hidden"
                     />
                   </label>
@@ -2125,7 +2157,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* Full Name */}
+              {/* Full Name (Mandatory) */}
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Full Name *</label>
                 <input
@@ -2137,7 +2169,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 />
               </div>
 
-              {/* Username & Password */}
+              {/* Username & Password (Mandatory) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">
@@ -2170,27 +2202,30 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     <input
                       disabled
                       value="Active Staff User"
-                      className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-500"
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-500 font-medium"
                     />
                   </div>
                 )}
               </div>
 
-              {/* Mobile Contact & Email */}
+              {/* Mobile Contact & Email (Mandatory) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Mobile Number</label>
+                  <label className="text-slate-700 font-bold block mb-1">Mobile Number *</label>
                   <input
-                    placeholder="Enter Mobile Number"
+                    required
+                    maxLength={10}
+                    placeholder="Enter 10-digit Mobile Number"
                     value={userForm.phone}
-                    onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                    onChange={(e) => setUserForm({ ...userForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Email Address</label>
+                  <label className="text-slate-700 font-bold block mb-1">Email Address *</label>
                   <input
+                    required
                     type="email"
                     placeholder="Enter Email Address"
                     value={userForm.email}
@@ -2200,7 +2235,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* System Role */}
+              {/* System Role (Mandatory) */}
               <div>
                 <label className="text-slate-700 font-bold block mb-1">System Role *</label>
                 <select
@@ -2215,49 +2250,65 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </select>
               </div>
 
-              {/* Assigned Plant(s) Multi-Select */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="text-slate-700 font-bold block">Assigned Plant(s) *</label>
-                  <span className="text-[10px] text-slate-400 font-medium">Select one or multiple</span>
-                </div>
+              {/* Assigned Plant(s) Multi-Select Dropdown (Mandatory) */}
+              <div className="relative">
+                <label className="text-slate-700 font-bold block mb-1">Assigned Plant(s) *</label>
+                
+                <button
+                  type="button"
+                  onClick={() => setPlantDropdownOpen(!plantDropdownOpen)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-left text-slate-900 flex justify-between items-center focus:outline-none focus:border-purple-500 cursor-pointer"
+                >
+                  <span className="truncate font-medium">
+                    {userForm.assigned_plants?.includes('ALL')
+                      ? 'All Plants (Unrestricted Access)'
+                      : userForm.assigned_plants?.length > 0
+                      ? `${userForm.assigned_plants.length} Plant(s) Selected (${userForm.assigned_plants.join(', ')})`
+                      : 'Select Assigned Plants *'}
+                  </span>
+                  <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${plantDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 max-h-36 overflow-y-auto">
-                  <label className="flex items-center gap-2 p-1.5 hover:bg-white rounded-xl cursor-pointer transition">
-                    <input
-                      type="checkbox"
-                      checked={userForm.assigned_plants?.includes('ALL')}
-                      onChange={() => handlePlantToggle('ALL')}
-                      className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
-                    />
-                    <span className="font-bold text-slate-800">All Plants (Unrestricted Access)</span>
-                  </label>
+                {plantDropdownOpen && (
+                  <div className="absolute left-0 right-0 mt-1 z-30 bg-white border border-slate-200 rounded-2xl shadow-xl p-2 space-y-1 max-h-48 overflow-y-auto animate-in fade-in zoom-in-95">
+                    <label className="flex items-center gap-2.5 p-2 hover:bg-purple-50 rounded-xl cursor-pointer transition">
+                      <input
+                        type="checkbox"
+                        checked={userForm.assigned_plants?.includes('ALL')}
+                        onChange={() => handlePlantToggle('ALL')}
+                        className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
+                      />
+                      <span className="font-bold text-slate-800">All Plants (All Access)</span>
+                    </label>
 
-                  {sites.map(s => {
-                    const code = s.code || s.site_code;
-                    const isChecked = userForm.assigned_plants?.includes(code);
-                    return (
-                      <label key={s.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-xl cursor-pointer transition">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handlePlantToggle(code)}
-                          className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
-                        />
-                        <span className="text-slate-700 font-medium">
-                          {s.name || s.site_name} <span className="text-slate-400 font-mono text-[10px]">({code})</span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
+                    <div className="border-t border-slate-100 my-1" />
+
+                    {sites.map(s => {
+                      const code = s.code || s.site_code;
+                      const isChecked = userForm.assigned_plants?.includes(code);
+                      return (
+                        <label key={s.id} className="flex items-center gap-2.5 p-2 hover:bg-slate-50 rounded-xl cursor-pointer transition">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handlePlantToggle(code)}
+                            className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
+                          />
+                          <span className="text-slate-700 font-medium">
+                            {s.name || s.site_name} <span className="text-slate-400 font-mono text-[10px]">({code})</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons */}
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setModalType(null)}
+                  onClick={() => { setModalType(null); setPlantDropdownOpen(false); }}
                   className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
                 >
                   Cancel
@@ -2286,7 +2337,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               Enter new password for <span className="font-bold text-slate-800">@{selectedUser.username}</span> ({selectedUser.name}).
             </p>
             <div>
-              <label className="text-slate-700 font-bold block mb-1 text-xs">New Password</label>
+              <label className="text-slate-700 font-bold block mb-1 text-xs">New Password *</label>
               <input
                 required
                 type="text"
@@ -2304,37 +2355,110 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 5. Edit Profile */}
+      {/* 5. EDIT SELF PROFILE MODAL (FULL FIELDS + MANDATORY) */}
       {modalType === 'EDIT_PROFILE' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <h3 className="font-black text-base text-slate-900">Edit Root Profile</h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
-            <form onSubmit={handleUpdateSelfProfile} className="space-y-3 text-xs">
+            <form onSubmit={handleUpdateSelfProfile} className="space-y-3.5 text-xs">
+              
+              {/* Photo Upload Row */}
+              <div className="flex items-center gap-4 p-3 bg-blue-50/50 rounded-2xl border border-blue-100">
+                <div className="relative">
+                  {profileForm.photo_url ? (
+                    <img
+                      src={profileForm.photo_url}
+                      alt="Avatar Preview"
+                      className="w-14 h-14 rounded-full object-cover border-2 border-blue-400 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-400">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                  )}
+                  {profileForm.photo_url && (
+                    <button
+                      type="button"
+                      onClick={() => setProfileForm(prev => ({ ...prev, photo_url: '' }))}
+                      className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow-xs cursor-pointer"
+                      title="Remove Photo"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1">
+                  <label className="text-slate-800 font-bold block mb-1">Profile Photo (Optional)</label>
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl cursor-pointer shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-blue-600" />
+                    <span>Upload Image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handlePhotoUpload(e, 'profile')}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[10px] text-slate-400 mt-1">PNG, JPG, WebP up to 2MB</p>
+                </div>
+              </div>
+
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Display Name</label>
+                <label className="text-slate-700 font-bold block mb-1">Display Name *</label>
                 <input
                   required
+                  placeholder="Enter Administrator Name"
                   value={profileForm.name}
                   onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
                 />
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Mobile Number *</label>
+                  <input
+                    required
+                    maxLength={10}
+                    placeholder="Enter Mobile Number"
+                    value={profileForm.phone}
+                    onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Email Address *</label>
+                  <input
+                    required
+                    type="email"
+                    placeholder="Enter Email Address"
+                    value={profileForm.email}
+                    onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Password</label>
+                <label className="text-slate-700 font-bold block mb-1">Password *</label>
                 <input
                   required
                   type="text"
+                  placeholder="Enter Password"
                   value={profileForm.password}
                   onChange={(e) => setProfileForm({ ...profileForm, password: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
                 />
               </div>
+
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold rounded-xl shadow-md shadow-blue-500/20 cursor-pointer">Save Changes</button>
+                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
+                <button type="submit" className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/20 cursor-pointer">Save Changes</button>
               </div>
             </form>
           </div>
