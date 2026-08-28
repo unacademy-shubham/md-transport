@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Login from './pages/Login';
 import SuperAdminDashboard from './pages/SuperAdminDashboard';
 import { supabase } from './supabaseClient';
@@ -10,7 +10,14 @@ const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 Minutes
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
+  
   const inactivityTimerRef = useRef(null);
+  const currentUserRef = useRef(null);
+
+  // Keep ref synchronized with state to prevent dependency recreation
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
 
   // Helper: Fetch Client Public IP
   const getClientIp = async () => {
@@ -24,61 +31,57 @@ export default function App() {
   };
 
   // 1. Session Clear & Instant Direct Sign-Out
-  const handleLogout = useCallback(async (isAutoTimeout = false) => {
-    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-
-    const savedSession = localStorage.getItem(SESSION_KEY);
-    let userToLog = currentUser;
-
-    if (!userToLog && savedSession) {
-      try {
-        const parsed = JSON.parse(savedSession);
-        userToLog = parsed.user;
-      } catch (e) {}
+  const handleLogout = async (isAutoTimeout = false) => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
     }
 
-    // 1. Instantly switch UI to Login Page (Zero Delay, No intermediate Home View)
-    setCurrentUser(null);
+    const userToLog = currentUserRef.current;
+
+    // STEP A: Instantly wipe state & storage to force immediate Login screen render
     localStorage.removeItem(SESSION_KEY);
     localStorage.removeItem(ACTIVE_TAB_KEY);
     sessionStorage.clear();
+    setCurrentUser(null);
+    currentUserRef.current = null;
 
-    // 2. Background Task: Clean Supabase Auth & Log Audit Entry
-    (async () => {
-      try {
-        await supabase.auth.signOut().catch(() => {});
+    // STEP B: Async Background Cleanup & Forensic Logging
+    try {
+      await supabase.auth.signOut().catch(() => {});
 
-        if (userToLog) {
-          const ip = await getClientIp();
-          await supabase.from('audit_logs').insert([{
-            module: 'AUTH',
-            action_type: isAutoTimeout ? 'TIMEOUT_LOGOUT' : 'LOGOUT',
-            description: isAutoTimeout
-              ? `User @${userToLog.username} (${userToLog.name}) auto-logged out due to 30 mins inactivity`
-              : `User @${userToLog.username} (${userToLog.name}) signed out securely`,
-            performed_by: userToLog.name,
-            performed_by_username: userToLog.username,
-            ip_address: ip,
-            user_agent: navigator.userAgent || 'Web Console Client',
-            metadata: {
-              role: userToLog.role,
-              reason: isAutoTimeout ? 'INACTIVITY_TIMEOUT_30M' : 'USER_TRIGGERED_SIGNOUT',
-              session_ended_at: new Date().toISOString()
-            }
-          }]);
-        }
-      } catch (err) {
-        console.error('Background logout telemetry error:', err);
+      if (userToLog) {
+        const ip = await getClientIp();
+        await supabase.from('audit_logs').insert([{
+          module: 'AUTH',
+          action_type: isAutoTimeout ? 'TIMEOUT_LOGOUT' : 'LOGOUT',
+          description: isAutoTimeout
+            ? `User @${userToLog.username} (${userToLog.name}) auto-logged out due to 30 mins inactivity`
+            : `User @${userToLog.username} (${userToLog.name}) signed out securely`,
+          performed_by: userToLog.name,
+          performed_by_username: userToLog.username,
+          ip_address: ip,
+          user_agent: navigator.userAgent || 'Web Console Client',
+          metadata: {
+            role: userToLog.role,
+            reason: isAutoTimeout ? 'INACTIVITY_TIMEOUT_30M' : 'USER_TRIGGERED_SIGNOUT',
+            session_ended_at: new Date().toISOString()
+          }
+        }]);
       }
-    })();
-  }, [currentUser]);
+    } catch (err) {
+      console.error('Logout telemetry error:', err);
+    }
+  };
 
-  // 2. Reset Inactivity Timer on User Interaction
-  const resetInactivityTimer = useCallback(() => {
-    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+  // 2. Reset Inactivity Timer
+  const resetInactivityTimer = () => {
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
 
+    // Only update if session still actively exists
     const savedSession = localStorage.getItem(SESSION_KEY);
-    if (savedSession) {
+    if (savedSession && currentUserRef.current) {
       try {
         const parsed = JSON.parse(savedSession);
         parsed.lastActivity = Date.now();
@@ -86,15 +89,14 @@ export default function App() {
       } catch (err) {
         console.error('Session update error:', err);
       }
+
+      inactivityTimerRef.current = setTimeout(() => {
+        handleLogout(true);
+      }, INACTIVITY_TIMEOUT_MS);
     }
+  };
 
-    // 30-minute auto-logout timer
-    inactivityTimerRef.current = setTimeout(() => {
-      handleLogout(true);
-    }, INACTIVITY_TIMEOUT_MS);
-  }, [handleLogout]);
-
-  // 3. Initial Load: Check Persistent Session from localStorage
+  // 3. Initial Load: Check Persistent Session ONCE on Mount
   useEffect(() => {
     const checkSavedSession = async () => {
       try {
@@ -107,12 +109,11 @@ export default function App() {
             // Root Admin Fallback Check
             if (user.id === 'root-admin' || user.username === 'admin') {
               setCurrentUser(user);
-              resetInactivityTimer();
               setIsSessionLoading(false);
               return;
             }
 
-            // Verify active status in Database
+            // Verify active status from Database
             const { data, error } = await supabase
               .from('app_users')
               .select('*')
@@ -121,26 +122,28 @@ export default function App() {
 
             if (!error && data && data.is_active !== false) {
               setCurrentUser(data);
-              resetInactivityTimer();
             } else {
-              handleLogout();
+              localStorage.removeItem(SESSION_KEY);
+              setCurrentUser(null);
             }
           } else {
-            handleLogout(true);
+            localStorage.removeItem(SESSION_KEY);
+            setCurrentUser(null);
           }
         }
       } catch (err) {
         console.error('Session restore error:', err);
-        handleLogout();
+        localStorage.removeItem(SESSION_KEY);
+        setCurrentUser(null);
       } finally {
         setIsSessionLoading(false);
       }
     };
 
     checkSavedSession();
-  }, [handleLogout, resetInactivityTimer]);
+  }, []); // Run ONLY once on mount
 
-  // 4. Attach Activity Event Listeners
+  // 4. Attach Inactivity Telemetry Listeners
   useEffect(() => {
     if (!currentUser) return;
 
@@ -152,11 +155,13 @@ export default function App() {
 
     return () => {
       activityEvents.forEach((evt) => window.removeEventListener(evt, handleActivity));
-      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
     };
-  }, [currentUser, resetInactivityTimer]);
+  }, [currentUser]);
 
-  // 5. Login Handler
+  // 5. Login Success Handler
   const handleLoginSuccess = (authenticatedUser) => {
     localStorage.setItem(
       SESSION_KEY,
@@ -174,7 +179,7 @@ export default function App() {
     );
   };
 
-  // Loading Screen while restoring session
+  // Loading Screen while checking session
   if (isSessionLoading) {
     return (
       <div className="min-h-screen bg-[#0f172a] flex items-center justify-center font-sans">
@@ -186,7 +191,7 @@ export default function App() {
     );
   }
 
-  // View 1: Not Authenticated (Always Directly Renders Login Page)
+  // View 1: Not Authenticated (Directly renders Login Screen)
   if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
