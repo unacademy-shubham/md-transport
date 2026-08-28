@@ -29,9 +29,19 @@ import {
   Globe,
   Clock,
   Shield,
-  Search
+  Search,
+  Upload,
+  Camera
 } from 'lucide-react';
 import { INDIAN_STATES, INDIA_STATES_DISTRICTS, fetchLocationByPincode } from '../utils/indiaGeoData';
+
+const USER_ROLES = [
+  { value: 'DIRECTOR', label: 'Director (Admin)' },
+  { value: 'HO_ACCOUNTS', label: 'Head Office Accounts' },
+  { value: 'HO_OPERATIONS', label: 'Head Office Operations' },
+  { value: 'PLANT_MANAGER', label: 'Plant Manager' },
+  { value: 'PLANT_INCHARGE', label: 'Plant Incharge' }
+];
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
   const [activeMenu, setActiveMenu] = useState(() => {
@@ -85,7 +95,19 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [pincodeLoading, setPincodeLoading] = useState(false);
 
   const [vehicleForm, setVehicleForm] = useState({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
-  const [userForm, setUserForm] = useState({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
+  
+  // Updated User Form
+  const [userForm, setUserForm] = useState({
+    username: '',
+    password_hash: '',
+    name: '',
+    role: 'PLANT_MANAGER',
+    phone: '',
+    email: '',
+    photo_url: '',
+    assigned_plants: ['ALL']
+  });
+
   const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
   const [resetPassValue, setResetPassValue] = useState('');
   const [profileForm, setProfileForm] = useState({ name: currentUser?.name || 'Admin', password: currentUser?.password_hash || '' });
@@ -393,23 +415,62 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
+  // ================= USER PHOTO UPLOAD & MULTI-PLANT HELPERS =================
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        showToast('Image size should be less than 2MB', 'warning');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setUserForm(prev => ({ ...prev, photo_url: reader.result }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePlantToggle = (plantCode) => {
+    setUserForm(prev => {
+      let current = [...(prev.assigned_plants || [])];
+
+      if (plantCode === 'ALL') {
+        return { ...prev, assigned_plants: ['ALL'] };
+      }
+
+      current = current.filter(c => c !== 'ALL');
+      if (current.includes(plantCode)) {
+        current = current.filter(c => c !== plantCode);
+      } else {
+        current.push(plantCode);
+      }
+
+      if (current.length === 0) current = ['ALL'];
+      return { ...prev, assigned_plants: current };
+    });
+  };
+
   // ================= USER ACCOUNTS LOGIC =================
   const handleCreateUser = async (e) => {
     e.preventDefault();
+    const cleanUser = userForm.username.trim();
+
     const defaultPermissions = userForm.role === 'DIRECTOR'
       ? { canViewFinancials: true, canCreateLR: true, canEditLR: true, canManageFuel: true, canManageUsers: true }
       : userForm.role === 'HO_ACCOUNTS'
       ? { canViewFinancials: true, canCreateLR: false, canEditLR: true, canManageFuel: true, canManageUsers: false }
-      : { canViewFinancials: false, canCreateLR: true, canEditLR: false, canManageFuel: true, canManageUsers: false };
+      : { canViewFinancials: false, canCreateLR: true, canEditLR: true, canManageFuel: true, canManageUsers: false };
 
-    const cleanUser = userForm.username.trim();
     const newUserPayload = {
       username: cleanUser,
       password_hash: userForm.password_hash,
-      name: userForm.name,
+      name: userForm.name.trim(),
       role: userForm.role,
-      branch: userForm.branch,
-      site_access: userForm.site_access,
+      phone: userForm.phone.trim(),
+      email: userForm.email.trim(),
+      photo_url: userForm.photo_url || null,
+      assigned_plants: userForm.assigned_plants?.length > 0 ? userForm.assigned_plants : ['ALL'],
       permissions: defaultPermissions,
       is_active: true,
       created_by: currentUser?.name || 'SuperAdmin',
@@ -423,7 +484,16 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     } else {
       setUsers(prev => [data || { ...newUserPayload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, ...prev]);
       await logAuditActivity('USER', 'CREATE', `Provisioned account @${cleanUser} for ${userForm.name} (${userForm.role})`);
-      setUserForm({ username: '', password_hash: '', name: '', role: 'SITE_EXEC', branch: 'Head Office', site_access: 'ALL' });
+      setUserForm({
+        username: '',
+        password_hash: '',
+        name: '',
+        role: 'PLANT_MANAGER',
+        phone: '',
+        email: '',
+        photo_url: '',
+        assigned_plants: ['ALL']
+      });
       setModalType(null);
       showToast(`User @${cleanUser} provisioned!`);
     }
@@ -434,10 +504,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     if (!selectedUser) return;
 
     const updatedUserObj = {
-      name: userForm.name,
+      name: userForm.name.trim(),
       role: userForm.role,
-      branch: userForm.branch,
-      site_access: userForm.site_access,
+      phone: userForm.phone.trim(),
+      email: userForm.email.trim(),
+      photo_url: userForm.photo_url || null,
+      assigned_plants: userForm.assigned_plants?.length > 0 ? userForm.assigned_plants : ['ALL'],
       updated_by: currentUser?.name || 'SuperAdmin',
       last_action_note: `Details updated by ${currentUser?.name || 'SuperAdmin'}`,
       updated_at: new Date().toISOString()
@@ -1042,7 +1114,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                
                 <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-800 rounded-3xl p-5 text-white shadow-xl shadow-blue-500/15 relative overflow-hidden">
                   <div className="absolute right-0 top-0 translate-x-3 -translate-y-3 w-24 h-24 bg-white/10 rounded-full blur-xl" />
                   <div className="flex justify-between items-start relative z-10">
@@ -1098,77 +1169,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     </div>
                   </div>
                 </div>
-
-              </div>
-
-              {/* Quick Jump Live Streams */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-sm">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-                      <h3 className="text-sm font-extrabold text-slate-900">Loading Plant Locations</h3>
-                    </div>
-                    <button onClick={() => handleMenuChange('sites')} className="text-xs text-blue-600 font-bold hover:underline cursor-pointer">
-                      View All →
-                    </button>
-                  </div>
-
-                  {sites.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-4 text-center">No loading plants configured yet.</p>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {sites.slice(0, 4).map(s => (
-                        <div key={s.id} className="py-3 flex justify-between items-center text-xs">
-                          <div>
-                            <p className="font-bold text-slate-800">{s.name || s.site_name}</p>
-                            <p className="text-slate-400 text-[11px]">{s.district ? `${s.district}, ` : ''}{s.state}</p>
-                          </div>
-                          <span className="bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 font-mono font-bold px-2.5 py-1 rounded-xl border border-blue-200/60 shadow-xs">
-                            {s.code || s.site_code}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="bg-white border border-slate-200/90 rounded-3xl p-6 space-y-4 shadow-sm">
-                  <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                      <h3 className="text-sm font-extrabold text-slate-900">Recent Live Security Telemetry</h3>
-                    </div>
-                    <button onClick={() => handleMenuChange('audit-logs')} className="text-xs text-blue-600 font-bold hover:underline cursor-pointer">
-                      Full Log (7-Days) →
-                    </button>
-                  </div>
-
-                  {auditLogs.length === 0 ? (
-                    <p className="text-xs text-slate-400 py-4 text-center">No audit records logged yet.</p>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {auditLogs.slice(0, 4).map(log => (
-                        <div key={log.id} className="py-3 flex justify-between items-center text-xs">
-                          <div className="space-y-0.5">
-                            <p className="font-bold text-slate-800 line-clamp-1">{log.description}</p>
-                            <p className="text-slate-400 text-[10px]">
-                              By <span className="text-slate-700 font-semibold">{log.performed_by}</span> • Public IP: <span className="font-mono">{log.ip_address || '127.0.0.1'}</span>
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => setSelectedAuditLog(log)}
-                            className="text-[11px] font-bold text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded-lg border border-blue-200 transition cursor-pointer"
-                          >
-                            Details
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
               </div>
             </div>
           )}
@@ -1226,28 +1226,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       ) : (
                         sites.map((s) => (
                           <tr key={s.id} className="hover:bg-blue-50/30 transition">
-                            {/* Plant Name & Unique Code */}
                             <td className="p-4">
                               <p className="font-bold text-slate-900 text-sm">{s.name || s.site_name}</p>
                               <span className="inline-block mt-1 px-2.5 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-mono font-bold border border-blue-200/70 text-[10px]">
                                 {s.code || s.site_code}
                               </span>
                             </td>
-
-                            {/* Plant Material Type */}
                             <td className="p-4">
                               <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200">
                                 {s.plant_type || 'General'}
                               </span>
                             </td>
-
-                            {/* Location Details */}
                             <td className="p-4 text-slate-600">
                               <p className="font-bold text-slate-800">{s.district ? `${s.district}, ` : ''}{s.state}</p>
                               <p className="text-[11px] text-slate-400 font-mono">PIN: {s.pincode || 'N/A'}</p>
                             </td>
-
-                            {/* Manager Contact */}
                             <td className="p-4">
                               {s.manager_name ? (
                                 <div>
@@ -1258,8 +1251,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                 <span className="text-slate-400 italic">Not Assigned</span>
                               )}
                             </td>
-
-                            {/* Status Toggle */}
                             <td className="p-4">
                               <button
                                 onClick={() => handleToggleSiteStatus(s)}
@@ -1272,8 +1263,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                 {s.is_active !== false ? 'Operational' : 'Inactive'}
                               </button>
                             </td>
-
-                            {/* Actions */}
                             <td className="p-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
@@ -1464,16 +1453,29 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             </div>
           )}
 
-          {/* 5. USER & STAFF ACCOUNTS */}
+          {/* 5. USER & STAFF ACCOUNTS (UPDATED WITH ROLES & ASSIGNED PLANTS) */}
           {activeMenu === 'users' && (
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-black text-slate-900">User & Staff Accounts</h2>
-                  <p className="text-xs text-slate-500">Manage Directors, Accounts Officers, and Plant Executives</p>
+                  <p className="text-xs text-slate-500">Manage Directors, Operations, Accounts & Plant Incharge credentials</p>
                 </div>
                 <button
-                  onClick={() => setModalType('ADD_USER')}
+                  onClick={() => {
+                    setSelectedUser(null);
+                    setUserForm({
+                      username: '',
+                      password_hash: '',
+                      name: '',
+                      role: 'PLANT_MANAGER',
+                      phone: '',
+                      email: '',
+                      photo_url: '',
+                      assigned_plants: ['ALL']
+                    });
+                    setModalType('ADD_USER');
+                  }}
                   className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold px-4 py-2.5 rounded-2xl text-xs transition shadow-md shadow-purple-500/20 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -1486,81 +1488,122 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50/80 text-slate-500 font-bold border-b border-slate-100">
                       <tr>
-                        <th className="p-4">User Profile</th>
-                        <th className="p-4">Role & Scope</th>
-                        <th className="p-4">Audit Note</th>
+                        <th className="p-4">User Identity</th>
+                        <th className="p-4">Contact Info</th>
+                        <th className="p-4">System Role</th>
+                        <th className="p-4">Assigned Plant(s)</th>
                         <th className="p-4">Status</th>
                         <th className="p-4 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                      {users.map((u) => (
-                        <tr key={u.id} className="hover:bg-purple-50/30 transition">
-                          <td className="p-4">
-                            <p className="font-bold text-slate-900">{u.name}</p>
-                            <p className="text-[11px] text-slate-400 font-mono">@{u.username} • {u.branch}</p>
-                          </td>
+                      {users.map((u) => {
+                        const userRoleLabel = USER_ROLES.find(r => r.value === u.role)?.label || u.role;
+                        const plants = Array.isArray(u.assigned_plants) ? u.assigned_plants : (u.site_access ? [u.site_access] : ['ALL']);
 
-                          <td className="p-4">
-                            <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
-                              {u.role}
-                            </span>
-                            <p className="text-[11px] text-slate-400 mt-1">Site: {u.site_access === 'ALL' ? 'All Plants' : u.site_access}</p>
-                          </td>
+                        return (
+                          <tr key={u.id} className="hover:bg-purple-50/30 transition">
+                            <td className="p-4 flex items-center gap-3">
+                              {u.photo_url ? (
+                                <img
+                                  src={u.photo_url}
+                                  alt={u.name}
+                                  className="w-10 h-10 rounded-full object-cover border border-purple-300 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-black text-sm flex items-center justify-center shrink-0 shadow-xs">
+                                  {u.name ? u.name.charAt(0).toUpperCase() : 'U'}
+                                </div>
+                              )}
+                              <div>
+                                <p className="font-bold text-slate-900 text-sm">{u.name}</p>
+                                <p className="text-[11px] text-slate-400 font-mono">@{u.username}</p>
+                              </div>
+                            </td>
 
-                          <td className="p-4">
-                            <p className="text-slate-800 font-semibold">{u.last_action_note || 'Account Created'}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">
-                              By: {u.updated_by !== 'None' ? u.updated_by : u.created_by}
-                            </p>
-                          </td>
+                            <td className="p-4">
+                              <p className="text-slate-800 font-mono font-medium">{u.phone || '-'}</p>
+                              <p className="text-[11px] text-slate-400">{u.email || '-'}</p>
+                            </td>
 
-                          <td className="p-4">
-                            <button
-                              onClick={() => handleToggleUserStatus(u)}
-                              className={`px-3 py-1 rounded-full text-[10px] font-bold border transition cursor-pointer ${
-                                u.is_active 
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
-                                  : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
-                              }`}
-                            >
-                              {u.is_active ? 'Active' : 'Suspended'}
-                            </button>
-                          </td>
+                            <td className="p-4">
+                              <span className="px-2.5 py-1 rounded-xl text-[10px] font-extrabold bg-purple-50 text-purple-700 border border-purple-200">
+                                {userRoleLabel}
+                              </span>
+                            </td>
 
-                          <td className="p-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
+                            <td className="p-4">
+                              <div className="flex flex-wrap gap-1 max-w-xs">
+                                {plants.includes('ALL') ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 font-bold text-[10px] border border-blue-200">
+                                    All Plants
+                                  </span>
+                                ) : (
+                                  plants.map(p => (
+                                    <span key={p} className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-mono font-bold text-[10px] border border-slate-200">
+                                      {p}
+                                    </span>
+                                  ))
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="p-4">
                               <button
-                                onClick={() => { 
-                                  setSelectedUser(u); 
-                                  setUserForm({ username: u.username, name: u.name, role: u.role, branch: u.branch, site_access: u.site_access, password_hash: '' }); 
-                                  setModalType('EDIT_USER'); 
-                                }}
-                                className="p-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-xl transition cursor-pointer"
-                                title="Edit User"
+                                onClick={() => handleToggleUserStatus(u)}
+                                className={`px-3 py-1 rounded-full text-[10px] font-bold border transition cursor-pointer ${
+                                  u.is_active 
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
+                                    : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                                }`}
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
+                                {u.is_active ? 'Active' : 'Suspended'}
                               </button>
+                            </td>
 
-                              <button
-                                onClick={() => { setSelectedUser(u); setResetPassValue(''); setModalType('RESET_PASS'); }}
-                                className="p-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 rounded-xl transition cursor-pointer"
-                                title="Reset Password"
-                              >
-                                <Key className="w-3.5 h-3.5" />
-                              </button>
+                            <td className="p-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  onClick={() => { 
+                                    setSelectedUser(u); 
+                                    setUserForm({
+                                      username: u.username || '',
+                                      name: u.name || '',
+                                      role: u.role || 'PLANT_MANAGER',
+                                      phone: u.phone || '',
+                                      email: u.email || '',
+                                      photo_url: u.photo_url || '',
+                                      assigned_plants: Array.isArray(u.assigned_plants) ? u.assigned_plants : (u.site_access ? [u.site_access] : ['ALL']),
+                                      password_hash: ''
+                                    }); 
+                                    setModalType('EDIT_USER'); 
+                                  }}
+                                  className="p-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-xl transition cursor-pointer"
+                                  title="Edit User"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
 
-                              <button
-                                onClick={() => handleDeleteUser(u)}
-                                className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl transition cursor-pointer"
-                                title="Delete User"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                <button
+                                  onClick={() => { setSelectedUser(u); setResetPassValue(''); setModalType('RESET_PASS'); }}
+                                  className="p-1.5 bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600 rounded-xl transition cursor-pointer"
+                                  title="Reset Password"
+                                >
+                                  <Key className="w-3.5 h-3.5" />
+                                </button>
+
+                                <button
+                                  onClick={() => handleDeleteUser(u)}
+                                  className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl transition cursor-pointer"
+                                  title="Delete User"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1602,7 +1645,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           {/* 7. LIVE AUDIT TRAIL LOGS */}
           {activeMenu === 'audit-logs' && (
             <div className="space-y-4">
-              
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-black text-slate-900 flex items-center gap-2.5">
@@ -1640,7 +1682,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* Single-Line Compact Table */}
               <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs whitespace-nowrap">
@@ -1667,18 +1708,15 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                             <td className="p-3.5 font-mono text-[11px] text-slate-500">
                               {new Date(log.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} • {new Date(log.created_at).toLocaleDateString()}
                             </td>
-
                             <td className="p-3.5">
                               <span className="font-extrabold text-slate-900">{log.performed_by}</span>
                               <span className="text-slate-400 text-[11px] font-mono ml-1.5">(@{log.performed_by_username || 'system'})</span>
                             </td>
-
                             <td className="p-3.5">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
                                 {log.ip_address || '127.0.0.1'}
                               </span>
                             </td>
-
                             <td className="p-3.5">
                               <span className={`px-2 py-0.5 rounded-md font-mono font-black text-[10px] ${
                                 log.action_type === 'DELETE' 
@@ -1692,11 +1730,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                 {log.module}:{log.action_type}
                               </span>
                             </td>
-
                             <td className="p-3.5 max-w-md truncate text-slate-800 font-medium" title={log.description}>
                               {log.description}
                             </td>
-
                             <td className="p-3.5 text-right">
                               <button
                                 onClick={() => setSelectedAuditLog(log)}
@@ -1719,14 +1755,10 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </main>
       </div>
 
-      {/* =========================================================================
-          FORENSIC AUDIT DETAILS DRAWER / MODAL (CLEANED UP - NO RAW CODE BLOCK)
-      ========================================================================== */}
+      {/* FORENSIC AUDIT DETAILS MODAL */}
       {selectedAuditLog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200">
-            
-            {/* Modal Header */}
             <div className="flex justify-between items-center border-b border-slate-100 pb-3.5">
               <div className="flex items-center gap-2.5">
                 <div className={`p-2 rounded-xl ${
@@ -1751,9 +1783,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               </button>
             </div>
 
-            {/* Forensic Detail Grid */}
             <div className="space-y-3 text-xs">
-              
               <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1.5">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Event Summary</span>
                 <p className="font-bold text-slate-900 text-sm leading-snug">{selectedAuditLog.description}</p>
@@ -1789,10 +1819,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   <p className="font-mono font-extrabold text-blue-600">{selectedAuditLog.module} : {selectedAuditLog.action_type}</p>
                 </div>
               </div>
-
             </div>
 
-            {/* Close Button */}
             <div className="flex justify-end pt-2 border-t border-slate-100">
               <button
                 onClick={() => setSelectedAuditLog(null)}
@@ -2042,272 +2070,211 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 3. Add User */}
-      {modalType === 'ADD_USER' && (
+      {/* 3. ADD / EDIT USER MODAL */}
+      {(modalType === 'ADD_USER' || modalType === 'EDIT_USER') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-black text-base text-slate-900">Create Staff User</h3>
+              <h3 className="font-black text-base text-slate-900">
+                {modalType === 'EDIT_USER' ? 'Edit Staff User Details' : 'Create Staff User'}
+              </h3>
               <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
-            <form onSubmit={handleCreateUser} className="space-y-3 text-xs">
+
+            <form onSubmit={modalType === 'EDIT_USER' ? handleUpdateUser : handleCreateUser} className="space-y-3.5 text-xs">
+              
+              {/* Photo Upload Row */}
+              <div className="flex items-center gap-4 p-3 bg-purple-50/50 rounded-2xl border border-purple-100">
+                <div className="relative">
+                  {userForm.photo_url ? (
+                    <img
+                      src={userForm.photo_url}
+                      alt="Avatar Preview"
+                      className="w-14 h-14 rounded-full object-cover border-2 border-purple-400 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-400">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                  )}
+                  {userForm.photo_url && (
+                    <button
+                      type="button"
+                      onClick={() => setUserForm(prev => ({ ...prev, photo_url: '' }))}
+                      className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow-xs cursor-pointer"
+                      title="Remove Photo"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1">
+                  <label className="text-slate-800 font-bold block mb-1">Profile Photo (Optional)</label>
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl cursor-pointer shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Upload Image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoUpload}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[10px] text-slate-400 mt-1">PNG, JPG, WebP up to 2MB</p>
+                </div>
+              </div>
+
+              {/* Full Name */}
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Full Name</label>
+                <label className="text-slate-700 font-bold block mb-1">Full Name *</label>
                 <input
                   required
-                  placeholder="e.g. Mukesh Dave"
+                  placeholder="Enter User Full Name"
                   value={userForm.name}
                   onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              {/* Username & Password */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Username</label>
+                  <label className="text-slate-700 font-bold block mb-1">
+                    Username * {modalType === 'EDIT_USER' && <span className="text-[10px] text-slate-400">(Read-Only)</span>}
+                  </label>
                   <input
                     required
-                    placeholder="e.g. director"
+                    disabled={modalType === 'EDIT_USER'}
+                    placeholder="Enter Username"
                     value={userForm.username}
                     onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
+                    className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                {modalType === 'ADD_USER' ? (
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Password *</label>
+                    <input
+                      required
+                      placeholder="Enter Password"
+                      value={userForm.password_hash}
+                      onChange={(e) => setUserForm({ ...userForm, password_hash: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Account Type</label>
+                    <input
+                      disabled
+                      value="Active Staff User"
+                      className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-500"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Mobile Contact & Email */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Mobile Number</label>
+                  <input
+                    placeholder="Enter Mobile Number"
+                    value={userForm.phone}
+                    onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
+
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">Password</label>
+                  <label className="text-slate-700 font-bold block mb-1">Email Address</label>
                   <input
-                    required
-                    placeholder="••••••••"
-                    value={userForm.password_hash}
-                    onChange={(e) => setUserForm({ ...userForm, password_hash: e.target.value })}
+                    type="email"
+                    placeholder="Enter Email Address"
+                    value={userForm.email}
+                    onChange={(e) => setUserForm({ ...userForm, email: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">System Role</label>
-                  <select
-                    value={userForm.role}
-                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="DIRECTOR">Director (Client Admin)</option>
-                    <option value="HO_ACCOUNTS">Head Office Accounts</option>
-                    <option value="SITE_EXEC">Site Executive</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Site Scope</label>
-                  <select
-                    value={userForm.site_access}
-                    onChange={(e) => setUserForm({ ...userForm, site_access: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="ALL">All Plants</option>
-                    {sites.map(s => <option key={s.id} value={s.code || s.site_code}>{s.name || s.site_name} ({s.code || s.site_code})</option>)}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Branch / Location</label>
-                <input
-                  value={userForm.branch}
-                  onChange={(e) => setUserForm({ ...userForm, branch: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow-md shadow-purple-500/20 cursor-pointer">Create Account</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* 4. Edit User */}
-      {modalType === 'EDIT_USER' && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-black text-base text-slate-900">Edit User Details</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
-            </div>
-            <form onSubmit={handleUpdateUser} className="space-y-3 text-xs">
+              {/* System Role */}
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Username (Read-Only)</label>
-                <input
-                  disabled
-                  value={userForm.username}
-                  className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-500 font-mono"
-                />
-              </div>
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Full Name</label>
-                <input
+                <label className="text-slate-700 font-bold block mb-1">System Role *</label>
+                <select
+                  value={userForm.role}
+                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500 font-medium"
                   required
-                  value={userForm.name}
-                  onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
-                />
+                >
+                  {USER_ROLES.map(r => (
+                    <option key={r.value} value={r.value}>{r.label}</option>
+                  ))}
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">System Role</label>
-                  <select
-                    value={userForm.role}
-                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="DIRECTOR">Director (Client Admin)</option>
-                    <option value="HO_ACCOUNTS">Head Office Accounts</option>
-                    <option value="SITE_EXEC">Site Executive</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Site Scope</label>
-                  <select
-                    value={userForm.site_access}
-                    onChange={(e) => setUserForm({ ...userForm, site_access: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
-                  >
-                    <option value="ALL">All Plants</option>
-                    {sites.map(s => <option key={s.id} value={s.code || s.site_code}>{s.name || s.site_name} ({s.code || s.site_code})</option>)}
-                  </select>
-                </div>
-              </div>
+
+              {/* Assigned Plant(s) Multi-Select */}
               <div>
-                <label className="text-slate-700 font-bold block mb-1">Branch / Location</label>
-                <input
-                  value={userForm.branch}
-                  onChange={(e) => setUserForm({ ...userForm, branch: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500"
-                />
+                <div className="flex justify-between items-center mb-1">
+                  <label className="text-slate-700 font-bold block">Assigned Plant(s) *</label>
+                  <span className="text-[10px] text-slate-400 font-medium">Select one or multiple</span>
+                </div>
+
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 max-h-36 overflow-y-auto">
+                  <label className="flex items-center gap-2 p-1.5 hover:bg-white rounded-xl cursor-pointer transition">
+                    <input
+                      type="checkbox"
+                      checked={userForm.assigned_plants?.includes('ALL')}
+                      onChange={() => handlePlantToggle('ALL')}
+                      className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
+                    />
+                    <span className="font-bold text-slate-800">All Plants (Unrestricted Access)</span>
+                  </label>
+
+                  {sites.map(s => {
+                    const code = s.code || s.site_code;
+                    const isChecked = userForm.assigned_plants?.includes(code);
+                    return (
+                      <label key={s.id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-xl cursor-pointer transition">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handlePlantToggle(code)}
+                          className="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
+                        />
+                        <span className="text-slate-700 font-medium">
+                          {s.name || s.site_name} <span className="text-slate-400 font-mono text-[10px]">({code})</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Action Buttons */}
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow-md shadow-purple-500/20 cursor-pointer">Save Changes</button>
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md shadow-purple-500/20 cursor-pointer"
+                >
+                  {modalType === 'EDIT_USER' ? 'Save Changes' : 'Create Account'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* 5. Add Driver */}
-      {modalType === 'ADD_DRIVER' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-black text-base text-slate-900">Add Commercial Driver</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
-            </div>
-            <form onSubmit={handleCreateDriver} className="space-y-3 text-xs">
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Driver Full Name</label>
-                <input
-                  required
-                  placeholder="e.g. Rameshwar Gurjar"
-                  value={driverForm.name}
-                  onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Mobile Number</label>
-                  <input
-                    required
-                    placeholder="98XXXXXXXX"
-                    value={driverForm.phone}
-                    onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">License No</label>
-                  <input
-                    required
-                    placeholder="MP09-XXXX"
-                    value={driverForm.license_no}
-                    onChange={(e) => setDriverForm({ ...driverForm, license_no: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Assigned Vehicle</label>
-                <input
-                  placeholder="e.g. MP-09-HH-4412"
-                  value={driverForm.assigned_vehicle}
-                  onChange={(e) => setDriverForm({ ...driverForm, assigned_vehicle: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 cursor-pointer">Save Driver</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 6. Edit Driver */}
-      {modalType === 'EDIT_DRIVER' && selectedDriver && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-black text-base text-slate-900">Edit Commercial Driver</h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
-            </div>
-            <form onSubmit={handleUpdateDriver} className="space-y-3 text-xs">
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Driver Full Name</label>
-                <input
-                  required
-                  value={driverForm.name}
-                  onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Mobile Number</label>
-                  <input
-                    required
-                    value={driverForm.phone}
-                    onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">License No</label>
-                  <input
-                    required
-                    value={driverForm.license_no}
-                    onChange={(e) => setDriverForm({ ...driverForm, license_no: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Assigned Vehicle</label>
-                <input
-                  value={driverForm.assigned_vehicle}
-                  onChange={(e) => setDriverForm({ ...driverForm, assigned_vehicle: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-amber-500"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalType(null)} className="px-4 py-2 bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer">Cancel</button>
-                <button type="submit" className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 cursor-pointer">Update Driver</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* 7. Reset Password */}
+      {/* 4. Reset Password */}
       {modalType === 'RESET_PASS' && selectedUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
@@ -2337,7 +2304,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 8. Edit Profile */}
+      {/* 5. Edit Profile */}
       {modalType === 'EDIT_PROFILE' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-sm p-6 space-y-4 shadow-2xl border border-slate-200">
