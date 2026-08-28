@@ -244,7 +244,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     };
   }, [clientIp]);
 
-  // ================= SITE MASTER LOGIC =================
+// ================= SITE MASTER LOGIC =================
+
+  // Auto-fill Location Details via PIN Code
   const handleSitePincodeChange = async (e) => {
     const pin = e.target.value.replace(/\D/g, '').slice(0, 6);
     setSiteForm(prev => ({ ...prev, pincode: pin }));
@@ -263,43 +265,44 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  const handleCreateSite = async (e) => {
-  e.preventDefault();
-  const siteCode = siteForm.site_code.toUpperCase().trim();
-  const siteName = siteForm.site_name.trim();
+  // 1. Create Site (Clean, Duplicate Protected & Optimistic Sync)
+ const handleCreateSite = async (e) => {
+    e.preventDefault();
+    const siteCode = siteForm.site_code.toUpperCase().trim();
+    const siteName = siteForm.site_name.trim();
 
-  const newSitePayload = {
-    name: siteName,
-    code: siteCode,
-    plant_type: siteForm.plant_type,
-    pincode: siteForm.pincode,
-    state: siteForm.state,
-    district: siteForm.district,
-    address: siteForm.address.trim(),
-    manager_name: siteForm.manager_name.trim(),
-    manager_phone: siteForm.manager_phone.trim(),
-    manager_email: siteForm.manager_email.trim(),
-    is_active: true,
-    created_by: currentUser?.name || 'SuperAdmin'
-  };
+    // Duplicate Check
+    const isDuplicate = sites.some(
+      s => (s.code || s.site_code)?.toUpperCase() === siteCode
+    );
 
-  const { data, error } = await supabase
-    .from('sites')
-    .insert([newSitePayload])
-    .select()
-    .single();
+    if (isDuplicate) {
+      showToast(`Plant Code '${siteCode}' already exists! Please enter a unique code.`, 'warning');
+      return;
+    }
 
-    if (error) {
-    showToast('Error: ' + error.message, 'error');
-   } else {
-    const savedItem = data || { ...newSitePayload, id: crypto.randomUUID(), created_at: new Date().toISOString() };
-    setSites(prev => [savedItem, ...prev]);
+    const newSitePayload = {
+      name: siteName,
+      code: siteCode,
+      plant_type: siteForm.plant_type,
+      pincode: siteForm.pincode,
+      state: siteForm.state,
+      district: siteForm.district,
+      address: siteForm.address.trim(),
+      manager_name: siteForm.manager_name.trim(),
+      manager_phone: siteForm.manager_phone.trim(),
+      manager_email: siteForm.manager_email.trim(),
+      is_active: true,
+      created_by: currentUser?.name || 'SuperAdmin'
+    };
 
-    await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteName} (${siteCode}) at ${siteForm.district}, ${siteForm.state}`, {
-      site_name: siteName,
-      code: siteCode
-    });
-    
+    // STEP A: Instant UI State Update & Modal Close (Zero Delay)
+    const tempId = crypto.randomUUID();
+    const optimisticSite = { ...newSitePayload, id: tempId, created_at: new Date().toISOString() };
+    setSites(prev => [optimisticSite, ...prev]);
+    setModalType(null);
+    showToast(`Plant ${siteName} (${siteCode}) created successfully!`);
+
     setSiteForm({
       site_name: '',
       site_code: '',
@@ -312,52 +315,49 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       manager_phone: '',
       manager_email: ''
     });
-    setModalType(null);
-    showToast('Plant site created successfully!');
-   }
+
+    // STEP B: Background Server Insert & Logging (Non-blocking)
+    (async () => {
+      const { data, error } = await supabase
+        .from('sites')
+        .insert([newSitePayload])
+        .select()
+        .single();
+
+      if (error) {
+        fetchAllData(); // Rollback if error
+        showToast('Error saving plant: ' + error.message, 'error');
+      } else if (data) {
+        setSites(prev => prev.map(s => s.id === tempId ? data : s));
+        logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteName} (${siteCode}) at ${newSitePayload.district}, ${newSitePayload.state}`, {
+          site_name: siteName,
+          code: siteCode
+        });
+      }
+    })();
   };
 
-    const { data, error } = await supabase
-      .from('sites')
-      .insert([newSitePayload])
-      .select()
-      .single();
-
-    if (error) {
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      const savedItem = data || { ...newSitePayload, id: crypto.randomUUID(), created_at: new Date().toISOString() };
-      setSites(prev => [savedItem, ...prev]);
-
-      await logAuditActivity('SITE', 'CREATE', `Created operational plant ${siteForm.site_name} (${siteCode}) at ${siteForm.district}, ${siteForm.state}`, {
-        site_name: siteForm.site_name,
-        code: siteCode
-      });
-      
-      setSiteForm({
-        site_name: '',
-        site_code: '',
-        plant_type: 'Loose Cement',
-        pincode: '',
-        state: '',
-        district: '',
-        address: '',
-        manager_name: '',
-        manager_phone: '',
-        manager_email: ''
-      });
-      setModalType(null);
-      showToast('Plant site created successfully!');
-    }
-  };
-
+  // 2. Update Site (Instant UI Close & Background Sync)
   const handleUpdateSite = async (e) => {
     e.preventDefault();
     if (!selectedSite) return;
 
+    const siteCode = siteForm.site_code.toUpperCase().trim();
+    const siteName = siteForm.site_name.trim();
+
+    // Duplicate Check against other existing plants
+    const isDuplicate = sites.some(
+      s => (s.code || s.site_code)?.toUpperCase() === siteCode && s.id !== selectedSite.id
+    );
+
+    if (isDuplicate) {
+      showToast(`Plant Code '${siteCode}' is already used by another plant!`, 'warning');
+      return;
+    }
+
     const updatedData = {
-      name: siteForm.site_name.trim(),
-      site_name: siteForm.site_name.trim(),
+      name: siteName,
+      code: siteCode,
       plant_type: siteForm.plant_type,
       pincode: siteForm.pincode,
       state: siteForm.state,
@@ -369,61 +369,80 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       updated_at: new Date().toISOString()
     };
 
-    setSites(prev => prev.map(s => s.id === selectedSite.id ? { ...s, ...updatedData } : s));
+    const targetSiteId = selectedSite.id;
 
-    const { error } = await supabase
-      .from('sites')
-      .update(updatedData)
-      .eq('id', selectedSite.id);
+    // STEP A: Instant UI State Update & Modal Close (Zero Delay)
+    setSites(prev => prev.map(s => s.id === targetSiteId ? { ...s, ...updatedData } : s));
+    setModalType(null);
+    setSelectedSite(null);
+    showToast('Plant details updated!');
 
-    if (error) {
-      fetchAllData();
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      await logAuditActivity('SITE', 'UPDATE', `Updated details for plant ${siteForm.site_name} (${selectedSite.code || selectedSite.site_code})`);
-      setModalType(null);
-      setSelectedSite(null);
-      showToast('Plant details updated!');
-    }
+    // STEP B: Background Server Update & Logging (Non-blocking)
+    (async () => {
+      const { error } = await supabase
+        .from('sites')
+        .update(updatedData)
+        .eq('id', targetSiteId);
+
+      if (error) {
+        fetchAllData(); // Rollback if failed
+        showToast('Error updating plant: ' + error.message, 'error');
+      } else {
+        logAuditActivity('SITE', 'UPDATE', `Updated details for plant ${siteName} (${siteCode})`);
+      }
+    })();
   };
 
+  // 3. Delete Site (Instant Removal & Background Delete)
   const handleDeleteSite = (site) => {
+    const siteName = site.name || site.site_name;
+    const siteCode = site.code || site.site_code;
+
     setConfirmDialog({
       open: true,
       title: 'Delete Plant Site',
-      message: `Are you sure you want to delete ${site.name || site.site_name} (${site.code || site.site_code})? This cannot be undone.`,
+      message: `Are you sure you want to delete ${siteName} (${siteCode})? This cannot be undone.`,
       onConfirm: async () => {
+        // Instant removal
         setSites(prev => prev.filter(s => s.id !== site.id));
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        showToast(`Plant ${siteName} deleted!`);
 
+        // Background Server Delete & Logging
         const { error } = await supabase.from('sites').delete().eq('id', site.id);
         if (error) {
-          fetchAllData();
+          fetchAllData(); // Rollback
           showToast('Error deleting plant: ' + error.message, 'error');
         } else {
-          await logAuditActivity('SITE', 'DELETE', `Deleted plant location ${site.name || site.site_name} (${site.code || site.site_code})`);
-          showToast(`Plant ${site.name || site.site_name} deleted!`);
+          logAuditActivity('SITE', 'DELETE', `Deleted plant location ${siteName} (${siteCode})`);
         }
-        setConfirmDialog(prev => ({ ...prev, open: false }));
       }
     });
   };
 
+  // 4. Toggle Operational Status (Instant Toggle & Background Sync)
   const handleToggleSiteStatus = async (site) => {
     const nextStatus = !site.is_active;
+    const siteName = site.name || site.site_name;
+
+    // Instant Toggle
     setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: nextStatus } : s));
+    showToast(`Plant status set to ${nextStatus ? 'Active' : 'Inactive'}`);
 
-    const { error } = await supabase
-      .from('sites')
-      .update({ is_active: nextStatus, updated_at: new Date().toISOString() })
-      .eq('id', site.id);
+    // Background Server Update & Logging
+    (async () => {
+      const { error } = await supabase
+        .from('sites')
+        .update({ is_active: nextStatus, updated_at: new Date().toISOString() })
+        .eq('id', site.id);
 
-    if (error) {
-      setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: !nextStatus } : s));
-      showToast('Error: ' + error.message, 'error');
-    } else {
-      await logAuditActivity('SITE', 'UPDATE', `Switched plant ${site.name || site.site_name} status to ${nextStatus ? 'OPERATIONAL' : 'INACTIVE'}`);
-      showToast(`Plant status set to ${nextStatus ? 'Active' : 'Inactive'}`);
-    }
+      if (error) {
+        setSites(prev => prev.map(s => s.id === site.id ? { ...s, is_active: !nextStatus } : s)); // Rollback
+        showToast('Error updating status: ' + error.message, 'error');
+      } else {
+        logAuditActivity('SITE', 'UPDATE', `Switched plant ${siteName} status to ${nextStatus ? 'OPERATIONAL' : 'INACTIVE'}`);
+      }
+    })();
   };
 
   // ================= FLEET MASTER LOGIC =================
@@ -1936,173 +1955,172 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       ========================================================================== */}
       
       {/* 1. Add / Edit Site Modal */}
-      {(modalType === 'ADD_SITE' || modalType === 'EDIT_SITE') && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="font-black text-base text-slate-900">
-                {modalType === 'EDIT_SITE' ? 'Edit Plant / Site Details' : 'Add New Plant / Site'}
-              </h3>
-              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
-            </div>
+    {(modalType === 'ADD_SITE' || modalType === 'EDIT_SITE') && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+    <div className="bg-white rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
+      <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+        <h3 className="font-black text-base text-slate-900">
+          {modalType === 'EDIT_SITE' ? 'Edit Plant / Site Details' : 'Add New Plant / Site'}
+        </h3>
+        <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
+      </div>
 
-            <form onSubmit={modalType === 'EDIT_SITE' ? handleUpdateSite : handleCreateSite} className="space-y-3.5 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">Plant / Site Name *</label>
-                  <input
-                    required
-                    placeholder="Enter Plant Name"
-                    value={siteForm.site_name}
-                    onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
+      <form onSubmit={modalType === 'EDIT_SITE' ? handleUpdateSite : handleCreateSite} className="space-y-3.5 text-xs">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-slate-700 font-bold block mb-1">Plant / Site Name *</label>
+            <input
+              required
+              placeholder="Enter Plant Name"
+              value={siteForm.site_name}
+              onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+            />
+          </div>
 
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">
-                    Site Code (Unique) * {modalType === 'EDIT_SITE' && <span className="text-[10px] text-slate-400">(Read-Only)</span>}
-                  </label>
-                  <input
-                    required
-                    disabled={modalType === 'EDIT_SITE'}
-                    placeholder="Enter Site Code"
-                    value={siteForm.site_code}
-                    onChange={(e) => setSiteForm({ ...siteForm, site_code: e.target.value.toUpperCase() })}
-                    className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Plant Type *</label>
-                <select
-                  value={siteForm.plant_type}
-                  onChange={(e) => setSiteForm({ ...siteForm, plant_type: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
-                  required
-                >
-                  <option value="Loose Cement">Loose Cement (Bulkers)</option>
-                  <option value="Clinker">Clinker (High-Side/Open Trailers)</option>
-                  <option value="Bagged Cement">Bagged Cement (Flatbed/Trucks)</option>
-                  <option value="Raw Material">Raw Material / Fly Ash</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">
-                    PIN Code * {pincodeLoading && <span className="text-blue-600 animate-pulse font-normal">(Fetching...)</span>}
-                  </label>
-                  <input
-                    required
-                    maxLength={6}
-                    placeholder="Enter 6-digit PIN"
-                    value={siteForm.pincode}
-                    onChange={handleSitePincodeChange}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">State *</label>
-                  <select
-                    required
-                    value={siteForm.state}
-                    onChange={(e) => setSiteForm({ ...siteForm, state: e.target.value, district: '' })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
-                  >
-                    <option value="">Select State</option>
-                    {INDIAN_STATES.map((st) => (
-                      <option key={st} value={st}>{st}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-700 font-bold block mb-1">District / City *</label>
-                  <input
-                    required
-                    list="district-datalist"
-                    placeholder="Select or Type District"
-                    value={siteForm.district}
-                    onChange={(e) => setSiteForm({ ...siteForm, district: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-                  />
-                  <datalist id="district-datalist">
-                    {siteForm.state && INDIA_STATES_DISTRICTS[siteForm.state]?.map((d) => (
-                      <option key={d} value={d} />
-                    ))}
-                  </datalist>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">Dispatch / Plant Address</label>
-                <textarea
-                  rows={2}
-                  placeholder="Enter Complete Address / Industrial Area"
-                  value={siteForm.address}
-                  onChange={(e) => setSiteForm({ ...siteForm, address: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
-                />
-              </div>
-
-              <div className="pt-2 border-t border-slate-100">
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Plant In-Charge / Contact (Optional)</p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-slate-700 font-bold block mb-1">Manager Name</label>
-                    <input
-                      placeholder="Enter Manager Name"
-                      value={siteForm.manager_name}
-                      onChange={(e) => setSiteForm({ ...siteForm, manager_name: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-slate-700 font-bold block mb-1">Contact Number</label>
-                    <input
-                      placeholder="Enter Mobile Number"
-                      value={siteForm.manager_phone}
-                      onChange={(e) => setSiteForm({ ...siteForm, manager_phone: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="text-slate-700 font-bold block mb-1">Email Address</label>
-                    <input
-                      type="email"
-                      placeholder="Enter Email Address"
-                      value={siteForm.manager_email}
-                      onChange={(e) => setSiteForm({ ...siteForm, manager_email: e.target.value })}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setModalType(null)}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/25 cursor-pointer"
-                >
-                  {modalType === 'EDIT_SITE' ? 'Update Plant' : 'Save Plant Site'}
-                </button>
-              </div>
-            </form>
+          <div>
+            <label className="text-slate-700 font-bold block mb-1">
+              Site Code (Unique) *
+            </label>
+            <input
+              required
+              placeholder="Enter Site Code (e.g. 12001)"
+              value={siteForm.site_code}
+              onChange={(e) => setSiteForm({ ...siteForm, site_code: e.target.value.toUpperCase() })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-blue-500"
+            />
           </div>
         </div>
-      )}
+
+        <div>
+          <label className="text-slate-700 font-bold block mb-1">Plant Type *</label>
+          <select
+            value={siteForm.plant_type}
+            onChange={(e) => setSiteForm({ ...siteForm, plant_type: e.target.value })}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
+            required
+          >
+            <option value="Loose Cement">Loose Cement (Bulkers)</option>
+            <option value="Clinker">Clinker (High-Side/Open Trailers)</option>
+            <option value="Bagged Cement">Bagged Cement (Flatbed/Trucks)</option>
+            <option value="Raw Material">Raw Material / Fly Ash</option>
+          </select>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-slate-700 font-bold block mb-1">
+              PIN Code * {pincodeLoading && <span className="text-blue-600 animate-pulse font-normal">(Fetching...)</span>}
+            </label>
+            <input
+              required
+              maxLength={6}
+              placeholder="Enter 6-digit PIN"
+              value={siteForm.pincode}
+              onChange={handleSitePincodeChange}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="text-slate-700 font-bold block mb-1">State *</label>
+            <select
+              required
+              value={siteForm.state}
+              onChange={(e) => setSiteForm({ ...siteForm, state: e.target.value, district: '' })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
+            >
+              <option value="">Select State</option>
+              {INDIAN_STATES.map((st) => (
+                <option key={st} value={st}>{st}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-slate-700 font-bold block mb-1">District / City *</label>
+            <input
+              required
+              list="district-datalist"
+              placeholder="Select or Type District"
+              value={siteForm.district}
+              onChange={(e) => setSiteForm({ ...siteForm, district: e.target.value })}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+            />
+            <datalist id="district-datalist">
+              {siteForm.state && INDIA_STATES_DISTRICTS[siteForm.state]?.map((d) => (
+                <option key={d} value={d} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-slate-700 font-bold block mb-1">Dispatch / Plant Address</label>
+          <textarea
+            rows={2}
+            placeholder="Enter Complete Address / Industrial Area"
+            value={siteForm.address}
+            onChange={(e) => setSiteForm({ ...siteForm, address: e.target.value })}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
+          />
+        </div>
+
+        <div className="pt-2 border-t border-slate-100">
+          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Plant In-Charge / Contact (Optional)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Manager Name</label>
+              <input
+                placeholder="Enter Manager Name"
+                value={siteForm.manager_name}
+                onChange={(e) => setSiteForm({ ...siteForm, manager_name: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Contact Number</label>
+              <input
+                placeholder="Enter Mobile Number"
+                value={siteForm.manager_phone}
+                onChange={(e) => setSiteForm({ ...siteForm, manager_phone: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
+              />
+            </div>
+
+            <div>
+              <label className="text-slate-700 font-bold block mb-1">Email Address</label>
+              <input
+                type="email"
+                placeholder="Enter Email Address"
+                value={siteForm.manager_email}
+                onChange={(e) => setSiteForm({ ...siteForm, manager_email: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => setModalType(null)}
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/25 cursor-pointer"
+          >
+            {modalType === 'EDIT_SITE' ? 'Update Plant' : 'Save Plant Site'}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+    )}
 
       {/* 2. Add Vehicle */}
       {modalType === 'ADD_VEHICLE' && (
