@@ -48,7 +48,7 @@ const USER_ROLES = [
 ];
 
 export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdate }) {
-const [activeMenu, setActiveMenu] = useState(() => {
+  const [activeMenu, setActiveMenu] = useState(() => {
     return localStorage.getItem('buddy_fleets_active_tab') || 'dashboard';
   });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -693,9 +693,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
     }
   };
 
-  // ================= DRIVER LOGIC (UPGRADED WITH EXCEL, DL EXPIRY & FAST SYNC) =================
-
-  // Helper: DL Expiry Status Checker
+  // ================= DRIVER LOGIC =================
   const getDlExpiryStatus = (expiryDate) => {
     if (!expiryDate) return { label: 'No Date', color: 'bg-slate-100 text-slate-600 border-slate-200' };
     const today = new Date();
@@ -710,7 +708,6 @@ const [activeMenu, setActiveMenu] = useState(() => {
     return { label: 'Valid', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' };
   };
 
-  // 1. Create Driver (Instant 0-Delay)
   const handleCreateDriver = async (e) => {
     e.preventDefault();
     const cleanLicense = driverForm.license_no.toUpperCase().trim();
@@ -724,19 +721,19 @@ const [activeMenu, setActiveMenu] = useState(() => {
     const newDriverPayload = {
       name: driverForm.name.trim(),
       phone: cleanPhone,
-      emergency_phone: driverForm.emergency_phone.trim(),
-      aadhaar_no: driverForm.aadhaar_no.trim(),
-      address: driverForm.address.trim(),
+      emergency_phone: (driverForm.emergency_phone || '').trim(),
+      aadhaar_no: (driverForm.aadhaar_no || '').trim(),
+      address: (driverForm.address || '').trim(),
       license_no: cleanLicense,
-      license_expiry: driverForm.license_expiry,
-      license_category: driverForm.license_category,
-      assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
+      license_expiry: driverForm.license_expiry || null,
+      license_category: driverForm.license_category || 'TRANS (Heavy)',
+      assigned_vehicle: (driverForm.assigned_vehicle || 'Unassigned').toUpperCase().trim(),
       assigned_plant: driverForm.assigned_plant || 'ALL',
       experience_years: parseFloat(driverForm.experience_years) || 0,
-      bank_account_no: driverForm.bank_account_no.trim(),
-      ifsc_code: driverForm.ifsc_code.toUpperCase().trim(),
-      bank_name: driverForm.bank_name.trim(),
-      upi_id: driverForm.upi_id.trim(),
+      bank_account_no: (driverForm.bank_account_no || '').trim(),
+      ifsc_code: (driverForm.ifsc_code || '').toUpperCase().trim(),
+      bank_name: (driverForm.bank_name || '').trim(),
+      upi_id: (driverForm.upi_id || '').trim(),
       status: driverForm.status || 'Available',
       photo_url: driverForm.photo_url || null,
       created_by: currentUser?.name || 'SuperAdmin',
@@ -761,7 +758,6 @@ const [activeMenu, setActiveMenu] = useState(() => {
     })();
   };
 
-  // 2. Update Driver (Instant 0-Delay)
   const handleUpdateDriver = async (e) => {
     e.preventDefault();
     if (!selectedDriver) return;
@@ -776,19 +772,19 @@ const [activeMenu, setActiveMenu] = useState(() => {
     const updatedDriverPayload = {
       name: driverForm.name.trim(),
       phone: driverForm.phone.trim(),
-      emergency_phone: driverForm.emergency_phone.trim(),
-      aadhaar_no: driverForm.aadhaar_no.trim(),
-      address: driverForm.address.trim(),
+      emergency_phone: (driverForm.emergency_phone || '').trim(),
+      aadhaar_no: (driverForm.aadhaar_no || '').trim(),
+      address: (driverForm.address || '').trim(),
       license_no: cleanLicense,
-      license_expiry: driverForm.license_expiry,
-      license_category: driverForm.license_category,
-      assigned_vehicle: driverForm.assigned_vehicle.toUpperCase().trim() || 'Unassigned',
+      license_expiry: driverForm.license_expiry || null,
+      license_category: driverForm.license_category || 'TRANS (Heavy)',
+      assigned_vehicle: (driverForm.assigned_vehicle || 'Unassigned').toUpperCase().trim(),
       assigned_plant: driverForm.assigned_plant || 'ALL',
       experience_years: parseFloat(driverForm.experience_years) || 0,
-      bank_account_no: driverForm.bank_account_no.trim(),
-      ifsc_code: driverForm.ifsc_code.toUpperCase().trim(),
-      bank_name: driverForm.bank_name.trim(),
-      upi_id: driverForm.upi_id.trim(),
+      bank_account_no: (driverForm.bank_account_no || '').trim(),
+      ifsc_code: (driverForm.ifsc_code || '').toUpperCase().trim(),
+      bank_name: (driverForm.bank_name || '').trim(),
+      upi_id: (driverForm.upi_id || '').trim(),
       status: driverForm.status,
       photo_url: driverForm.photo_url || null,
       updated_by: currentUser?.name || 'SuperAdmin',
@@ -813,7 +809,6 @@ const [activeMenu, setActiveMenu] = useState(() => {
     })();
   };
 
-  // 3. Delete Driver
   const handleDeleteDriver = (driver) => {
     setConfirmDialog({
       open: true,
@@ -835,7 +830,6 @@ const [activeMenu, setActiveMenu] = useState(() => {
     });
   };
 
-  // 4. Excel Export
   const handleExportDriversExcel = () => {
     if (filteredDrivers.length === 0) {
       showToast('No driver records found to export.', 'warning');
@@ -868,7 +862,6 @@ const [activeMenu, setActiveMenu] = useState(() => {
     logAuditActivity('DRIVER', 'EXPORT', `Exported ${exportRows.length} driver records to Excel`);
   };
 
-  // 5. Download Sample Excel Template
   const handleDownloadDriverTemplate = () => {
     const sampleData = [
       {
@@ -896,7 +889,6 @@ const [activeMenu, setActiveMenu] = useState(() => {
     showToast('Sample template downloaded!');
   };
 
-  // 6. Bulk Import from Excel
   const handleImportDriversExcel = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -1047,7 +1039,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
     );
   });
 
-  // Filtered Drivers Logic (Search + Plant + Status)
+  // Filtered Drivers Logic
   const filteredDrivers = drivers.filter(d => {
     const query = driverSearch.toLowerCase().trim();
     const matchesSearch = !query || (
@@ -1217,14 +1209,13 @@ const [activeMenu, setActiveMenu] = useState(() => {
                 </div>
               )}
             </div>
-
           </div>
 
         </div>
       </header>
 
       {/* Main Body */}
-<div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
         
         {/* Left Sidebar */}
         <aside className="w-72 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3.5 shrink-0 shadow-xl overflow-y-auto sticky top-0 h-[calc(100vh-65px)] select-none">
@@ -1702,7 +1693,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
             </div>
           )}
 
-          {/* 4. DRIVER DIRECTORY MASTER (UPGRADED WITH EXCEL, FILTERS & DL EXPIRY) */}
+          {/* 4. DRIVER DIRECTORY MASTER */}
           {activeMenu === 'drivers' && (
             <div className="space-y-4">
               
@@ -2254,7 +2245,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
                               <span className="text-slate-400 text-[11px] font-mono ml-1.5">(@{log.performed_by_username || 'system'})</span>
                             </td>
                             <td className="p-3.5">
-                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
                                 {log.ip_address || '127.0.0.1'}
                               </span>
                             </td>
@@ -2379,172 +2370,172 @@ const [activeMenu, setActiveMenu] = useState(() => {
       ========================================================================== */}
       
       {/* 1. Add / Edit Site Modal */}
-    {(modalType === 'ADD_SITE' || modalType === 'EDIT_SITE') && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-    <div className="bg-white rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
-      <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-        <h3 className="font-black text-base text-slate-900">
-          {modalType === 'EDIT_SITE' ? 'Edit Plant / Site Details' : 'Add New Plant / Site'}
-        </h3>
-        <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
-      </div>
-
-      <form onSubmit={modalType === 'EDIT_SITE' ? handleUpdateSite : handleCreateSite} className="space-y-3.5 text-xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-slate-700 font-bold block mb-1">Plant / Site Name *</label>
-            <input
-              required
-              placeholder="Enter Plant Name"
-              value={siteForm.site_name}
-              onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-slate-700 font-bold block mb-1">
-              Site Code (Unique) *
-            </label>
-            <input
-              required
-              placeholder="Enter Site Code (e.g. 12001)"
-              value={siteForm.site_code}
-              onChange={(e) => setSiteForm({ ...siteForm, site_code: e.target.value.toUpperCase() })}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-blue-500"
-            />
-          </div>
-        </div>
-
-        <div>
-          <label className="text-slate-700 font-bold block mb-1">Plant Type *</label>
-          <select
-            value={siteForm.plant_type}
-            onChange={(e) => setSiteForm({ ...siteForm, plant_type: e.target.value })}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
-            required
-          >
-            <option value="Loose Cement">Loose Cement (Bulkers)</option>
-            <option value="Clinker">Clinker (High-Side/Open Trailers)</option>
-            <option value="Bagged Cement">Bagged Cement (Flatbed/Trucks)</option>
-            <option value="Raw Material">Raw Material / Fly Ash</option>
-          </select>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <label className="text-slate-700 font-bold block mb-1">
-              PIN Code * {pincodeLoading && <span className="text-blue-600 animate-pulse font-normal">(Fetching...)</span>}
-            </label>
-            <input
-              required
-              maxLength={6}
-              placeholder="Enter 6-digit PIN"
-              value={siteForm.pincode}
-              onChange={handleSitePincodeChange}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-slate-700 font-bold block mb-1">State *</label>
-            <select
-              required
-              value={siteForm.state}
-              onChange={(e) => setSiteForm({ ...siteForm, state: e.target.value, district: '' })}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
-            >
-              <option value="">Select State</option>
-              {INDIAN_STATES.map((st) => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-slate-700 font-bold block mb-1">District / City *</label>
-            <input
-              required
-              list="district-datalist"
-              placeholder="Select or Type District"
-              value={siteForm.district}
-              onChange={(e) => setSiteForm({ ...siteForm, district: e.target.value })}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-            />
-            <datalist id="district-datalist">
-              {siteForm.state && INDIA_STATES_DISTRICTS[siteForm.state]?.map((d) => (
-                <option key={d} value={d} />
-              ))}
-            </datalist>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-slate-700 font-bold block mb-1">Dispatch / Plant Address</label>
-          <textarea
-            rows={2}
-            placeholder="Enter Complete Address / Industrial Area"
-            value={siteForm.address}
-            onChange={(e) => setSiteForm({ ...siteForm, address: e.target.value })}
-            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
-          />
-        </div>
-
-        <div className="pt-2 border-t border-slate-100">
-          <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Plant In-Charge / Contact (Optional)</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Manager Name</label>
-              <input
-                placeholder="Enter Manager Name"
-                value={siteForm.manager_name}
-                onChange={(e) => setSiteForm({ ...siteForm, manager_name: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-              />
+      {(modalType === 'ADD_SITE' || modalType === 'EDIT_SITE') && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-black text-base text-slate-900">
+                {modalType === 'EDIT_SITE' ? 'Edit Plant / Site Details' : 'Add New Plant / Site'}
+              </h3>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
             </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Contact Number</label>
-              <input
-                placeholder="Enter Mobile Number"
-                value={siteForm.manager_phone}
-                onChange={(e) => setSiteForm({ ...siteForm, manager_phone: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
-              />
-            </div>
+            <form onSubmit={modalType === 'EDIT_SITE' ? handleUpdateSite : handleCreateSite} className="space-y-3.5 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Plant / Site Name *</label>
+                  <input
+                    required
+                    placeholder="Enter Plant Name"
+                    value={siteForm.site_name}
+                    onChange={(e) => setSiteForm({ ...siteForm, site_name: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Email Address</label>
-              <input
-                type="email"
-                placeholder="Enter Email Address"
-                value={siteForm.manager_email}
-                onChange={(e) => setSiteForm({ ...siteForm, manager_email: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
-              />
-            </div>
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">
+                    Site Code (Unique) *
+                  </label>
+                  <input
+                    required
+                    placeholder="Enter Site Code (e.g. 12001)"
+                    value={siteForm.site_code}
+                    onChange={(e) => setSiteForm({ ...siteForm, site_code: e.target.value.toUpperCase() })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 uppercase font-mono focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Plant Type *</label>
+                <select
+                  value={siteForm.plant_type}
+                  onChange={(e) => setSiteForm({ ...siteForm, plant_type: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
+                  required
+                >
+                  <option value="Loose Cement">Loose Cement (Bulkers)</option>
+                  <option value="Clinker">Clinker (High-Side/Open Trailers)</option>
+                  <option value="Bagged Cement">Bagged Cement (Flatbed/Trucks)</option>
+                  <option value="Raw Material">Raw Material / Fly Ash</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">
+                    PIN Code * {pincodeLoading && <span className="text-blue-600 animate-pulse font-normal">(Fetching...)</span>}
+                  </label>
+                  <input
+                    required
+                    maxLength={6}
+                    placeholder="Enter 6-digit PIN"
+                    value={siteForm.pincode}
+                    onChange={handleSitePincodeChange}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">State *</label>
+                  <select
+                    required
+                    value={siteForm.state}
+                    onChange={(e) => setSiteForm({ ...siteForm, state: e.target.value, district: '' })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 font-medium"
+                  >
+                    <option value="">Select State</option>
+                    {INDIAN_STATES.map((st) => (
+                      <option key={st} value={st}>{st}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">District / City *</label>
+                  <input
+                    required
+                    list="district-datalist"
+                    placeholder="Select or Type District"
+                    value={siteForm.district}
+                    onChange={(e) => setSiteForm({ ...siteForm, district: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+                  />
+                  <datalist id="district-datalist">
+                    {siteForm.state && INDIA_STATES_DISTRICTS[siteForm.state]?.map((d) => (
+                      <option key={d} value={d} />
+                    ))}
+                  </datalist>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-700 font-bold block mb-1">Dispatch / Plant Address</label>
+                <textarea
+                  rows={2}
+                  placeholder="Enter Complete Address / Industrial Area"
+                  value={siteForm.address}
+                  onChange={(e) => setSiteForm({ ...siteForm, address: e.target.value })}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500 resize-none"
+                />
+              </div>
+
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">Plant In-Charge / Contact (Optional)</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Manager Name</label>
+                    <input
+                      placeholder="Enter Manager Name"
+                      value={siteForm.manager_name}
+                      onChange={(e) => setSiteForm({ ...siteForm, manager_name: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Contact Number</label>
+                    <input
+                      placeholder="Enter Mobile Number"
+                      value={siteForm.manager_phone}
+                      onChange={(e) => setSiteForm({ ...siteForm, manager_phone: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="Enter Email Address"
+                      value={siteForm.manager_email}
+                      onChange={(e) => setSiteForm({ ...siteForm, manager_email: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/25 cursor-pointer"
+                >
+                  {modalType === 'EDIT_SITE' ? 'Update Plant' : 'Save Plant Site'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-
-        <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={() => setModalType(null)}
-            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md shadow-blue-500/25 cursor-pointer"
-          >
-            {modalType === 'EDIT_SITE' ? 'Update Plant' : 'Save Plant Site'}
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-    )}
+      )}
 
       {/* 2. Add Vehicle */}
       {modalType === 'ADD_VEHICLE' && (
@@ -2610,7 +2601,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
         </div>
       )}
 
-      {/* 3. ADD / EDIT USER MODAL (FULL EDITING PERMISSIONS FOR SUPERADMIN) */}
+      {/* 3. ADD / EDIT USER MODAL */}
       {(modalType === 'ADD_USER' || modalType === 'EDIT_USER') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
@@ -2628,7 +2619,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
 
             <form onSubmit={modalType === 'EDIT_USER' ? handleUpdateUser : handleCreateUser} className="space-y-3.5 text-xs">
               
-              {/* Photo Upload Row (Optional) */}
+              {/* Photo Upload Row */}
               <div className="flex items-center gap-4 p-3 bg-purple-50/50 rounded-2xl border border-purple-100">
                 <div className="relative">
                   {userForm.photo_url ? (
@@ -2670,7 +2661,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
                 </div>
               </div>
 
-              {/* Full Name (Mandatory) */}
+              {/* Full Name */}
               <div>
                 <label className="text-slate-700 font-bold block mb-1">Full Name *</label>
                 <input
@@ -2682,7 +2673,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
                 />
               </div>
 
-              {/* Username & Password / Role Row */}
+              {/* Username & Password */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Username *</label>
@@ -2723,7 +2714,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
                 )}
               </div>
 
-              {/* Mobile Contact & Email (Mandatory) */}
+              {/* Mobile & Email */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">Mobile Number *</label>
@@ -2750,7 +2741,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
                 </div>
               </div>
 
-              {/* System Role for ADD_USER */}
+              {/* Role for ADD_USER */}
               {modalType === 'ADD_USER' && (
                 <div>
                   <label className="text-slate-700 font-bold block mb-1">System Role *</label>
@@ -2767,7 +2758,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
                 </div>
               )}
 
-              {/* Assigned Plant(s) Multi-Select Dropdown (Mandatory) */}
+              {/* Assigned Plant(s) */}
               <div className="relative">
                 <label className="text-slate-700 font-bold block mb-1">Assigned Plant(s) *</label>
                 
@@ -2821,7 +2812,7 @@ const [activeMenu, setActiveMenu] = useState(() => {
                 )}
               </div>
 
-              {/* Action Buttons */}
+              {/* Actions */}
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
@@ -2982,282 +2973,282 @@ const [activeMenu, setActiveMenu] = useState(() => {
         </div>
       )}
 
-      {/* Add / Edit Driver Modal (Complete 3-Section Form) */}
-     {(modalType === 'ADD_DRIVER' || modalType === 'EDIT_DRIVER') && (
-     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
-       <div className="bg-white rounded-3xl w-full max-w-2xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
-        <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-        <h3 className="font-black text-base text-slate-900">
-          {modalType === 'EDIT_DRIVER' ? 'Edit Commercial Driver Profile' : 'Register Commercial Driver'}
-        </h3>
-        <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
-      </div>
+      {/* 6. Add / Edit Driver Modal (Complete 3-Section Form) */}
+      {(modalType === 'ADD_DRIVER' || modalType === 'EDIT_DRIVER') && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-2xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <h3 className="font-black text-base text-slate-900">
+                {modalType === 'EDIT_DRIVER' ? 'Edit Commercial Driver Profile' : 'Register Commercial Driver'}
+              </h3>
+              <button onClick={() => setModalType(null)} className="text-slate-400 hover:text-slate-600 font-bold cursor-pointer">✕</button>
+            </div>
 
-      <form onSubmit={modalType === 'EDIT_DRIVER' ? handleUpdateDriver : handleCreateDriver} className="space-y-4 text-xs">
-        
-        {/* Photo Upload Row */}
-        <div className="flex items-center gap-4 p-3 bg-amber-50/50 rounded-2xl border border-amber-100">
-          <div className="relative">
-            {driverForm.photo_url ? (
-              <img
-                src={driverForm.photo_url}
-                alt="Driver Preview"
-                className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-sm"
-              />
-            ) : (
-              <div className="w-14 h-14 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-400">
-                <Camera className="w-6 h-6" />
+            <form onSubmit={modalType === 'EDIT_DRIVER' ? handleUpdateDriver : handleCreateDriver} className="space-y-4 text-xs">
+              
+              {/* Photo Upload Row */}
+              <div className="flex items-center gap-4 p-3 bg-amber-50/50 rounded-2xl border border-amber-100">
+                <div className="relative">
+                  {driverForm.photo_url ? (
+                    <img
+                      src={driverForm.photo_url}
+                      alt="Driver Preview"
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-400 shadow-sm"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-slate-400">
+                      <Camera className="w-6 h-6" />
+                    </div>
+                  )}
+                  {driverForm.photo_url && (
+                    <button
+                      type="button"
+                      onClick={() => setDriverForm(prev => ({ ...prev, photo_url: '' }))}
+                      className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow-xs cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex-1">
+                  <label className="text-slate-800 font-bold block mb-1">Driver Photo (Optional)</label>
+                  <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl cursor-pointer shadow-2xs">
+                    <Upload className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Upload Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => handlePhotoUpload(e, 'driver')}
+                      className="hidden"
+                    />
+                  </label>
+                  <p className="text-[10px] text-slate-400 mt-1">PNG, JPG up to 2MB</p>
+                </div>
               </div>
-            )}
-            {driverForm.photo_url && (
-              <button
-                type="button"
-                onClick={() => setDriverForm(prev => ({ ...prev, photo_url: '' }))}
-                className="absolute -top-1 -right-1 bg-rose-600 text-white rounded-full p-0.5 shadow-xs cursor-pointer"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
 
-          <div className="flex-1">
-            <label className="text-slate-800 font-bold block mb-1">Driver Photo (Optional)</label>
-            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl cursor-pointer shadow-2xs">
-              <Upload className="w-3.5 h-3.5 text-amber-600" />
-              <span>Upload Photo</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => handlePhotoUpload(e, 'driver')}
-                className="hidden"
-              />
-            </label>
-            <p className="text-[10px] text-slate-400 mt-1">PNG, JPG up to 2MB</p>
-          </div>
-        </div>
+              {/* SECTION 1: Personal Info */}
+              <div className="space-y-3">
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">1. Personal & Contact Details</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Driver Full Name *</label>
+                    <input
+                      required
+                      placeholder="e.g. Rameshwar Gurjar"
+                      value={driverForm.name}
+                      onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-        {/* SECTION 1: Personal Info */}
-        <div className="space-y-3">
-          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">1. Personal & Contact Details</p>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Driver Full Name *</label>
-              <input
-                required
-                placeholder="e.g. Rameshwar Gurjar"
-                value={driverForm.name}
-                onChange={(e) => setDriverForm({ ...driverForm, name: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Mobile Number *</label>
+                    <input
+                      required
+                      maxLength={10}
+                      placeholder="10-digit Mobile"
+                      value={driverForm.phone}
+                      onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Mobile Number *</label>
-              <input
-                required
-                maxLength={10}
-                placeholder="10-digit Mobile"
-                value={driverForm.phone}
-                onChange={(e) => setDriverForm({ ...driverForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Emergency Contact *</label>
+                    <input
+                      required
+                      maxLength={10}
+                      placeholder="Family / Guardian No"
+                      value={driverForm.emergency_phone}
+                      onChange={(e) => setDriverForm({ ...driverForm, emergency_phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Emergency Contact *</label>
-              <input
-                required
-                maxLength={10}
-                placeholder="Family / Guardian No"
-                value={driverForm.emergency_phone}
-                onChange={(e) => setDriverForm({ ...driverForm, emergency_phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Aadhaar Card No (Optional)</label>
+                    <input
+                      maxLength={12}
+                      placeholder="12-digit Aadhaar Number"
+                      value={driverForm.aadhaar_no}
+                      onChange={(e) => setDriverForm({ ...driverForm, aadhaar_no: e.target.value.replace(/\D/g, '').slice(0, 12) })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Aadhaar Card No (Optional)</label>
-              <input
-                maxLength={12}
-                placeholder="12-digit Aadhaar Number"
-                value={driverForm.aadhaar_no}
-                onChange={(e) => setDriverForm({ ...driverForm, aadhaar_no: e.target.value.replace(/\D/g, '').slice(0, 12) })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Driving Experience (Years)</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      placeholder="e.g. 5"
+                      value={driverForm.experience_years}
+                      onChange={(e) => setDriverForm({ ...driverForm, experience_years: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Driving Experience (Years)</label>
-              <input
-                type="number"
-                step="0.5"
-                placeholder="e.g. 5"
-                value={driverForm.experience_years}
-                onChange={(e) => setDriverForm({ ...driverForm, experience_years: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
-          </div>
-        </div>
+              {/* SECTION 2: License & Operations */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">2. Commercial License & Allocations</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Commercial DL No *</label>
+                    <input
+                      required
+                      placeholder="e.g. RJ14-20180012345"
+                      value={driverForm.license_no}
+                      onChange={(e) => setDriverForm({ ...driverForm, license_no: e.target.value.toUpperCase() })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono uppercase focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-        {/* SECTION 2: License & Operations */}
-        <div className="space-y-3 pt-2 border-t border-slate-100">
-          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">2. Commercial License & Allocations</p>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Commercial DL No *</label>
-              <input
-                required
-                placeholder="e.g. RJ14-20180012345"
-                value={driverForm.license_no}
-                onChange={(e) => setDriverForm({ ...driverForm, license_no: e.target.value.toUpperCase() })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono uppercase focus:outline-none focus:border-amber-500"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">DL Expiry Date *</label>
+                    <input
+                      required
+                      type="date"
+                      value={driverForm.license_expiry}
+                      onChange={(e) => setDriverForm({ ...driverForm, license_expiry: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                    />
+                  </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">DL Expiry Date *</label>
-              <input
-                required
-                type="date"
-                value={driverForm.license_expiry}
-                onChange={(e) => setDriverForm({ ...driverForm, license_expiry: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">DL Category *</label>
+                    <select
+                      value={driverForm.license_category}
+                      onChange={(e) => setDriverForm({ ...driverForm, license_category: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                      required
+                    >
+                      <option value="TRANS (Heavy)">TRANS (Heavy Bulkers)</option>
+                      <option value="HMV">HMV (Heavy Motor Vehicle)</option>
+                      <option value="LMV-Commercial">LMV-Commercial</option>
+                    </select>
+                  </div>
+                </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">DL Category *</label>
-              <select
-                value={driverForm.license_category}
-                onChange={(e) => setDriverForm({ ...driverForm, license_category: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
-                required
-              >
-                <option value="TRANS (Heavy)">TRANS (Heavy Bulkers)</option>
-                <option value="HMV">HMV (Heavy Motor Vehicle)</option>
-                <option value="LMV-Commercial">LMV-Commercial</option>
-              </select>
-            </div>
-          </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Assigned Truck</label>
+                    <select
+                      value={driverForm.assigned_vehicle}
+                      onChange={(e) => setDriverForm({ ...driverForm, assigned_vehicle: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
+                    >
+                      <option value="Unassigned">-- Unassigned / Pool --</option>
+                      {vehicles.map(v => (
+                        <option key={v.id} value={v.vehicle_no}>{v.vehicle_no} ({v.vehicle_type})</option>
+                      ))}
+                    </select>
+                  </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Assigned Truck</label>
-              <select
-                value={driverForm.assigned_vehicle}
-                onChange={(e) => setDriverForm({ ...driverForm, assigned_vehicle: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-mono"
-              >
-                <option value="Unassigned">-- Unassigned / Pool --</option>
-                {vehicles.map(v => (
-                  <option key={v.id} value={v.vehicle_no}>{v.vehicle_no} ({v.vehicle_type})</option>
-                ))}
-              </select>
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Base Plant / Site *</label>
+                    <select
+                      value={driverForm.assigned_plant}
+                      onChange={(e) => setDriverForm({ ...driverForm, assigned_plant: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                      required
+                    >
+                      <option value="ALL">All Plants Pool</option>
+                      {sites.map(s => (
+                        <option key={s.id} value={s.code || s.site_code}>{s.name || s.site_name} ({s.code || s.site_code})</option>
+                      ))}
+                    </select>
+                  </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Base Plant / Site *</label>
-              <select
-                value={driverForm.assigned_plant}
-                onChange={(e) => setDriverForm({ ...driverForm, assigned_plant: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
-                required
-              >
-                <option value="ALL">All Plants Pool</option>
-                {sites.map(s => (
-                  <option key={s.id} value={s.code || s.site_code}>{s.name || s.site_name} ({s.code || s.site_code})</option>
-                ))}
-              </select>
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Driver Status *</label>
+                    <select
+                      value={driverForm.status}
+                      onChange={(e) => setDriverForm({ ...driverForm, status: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
+                      required
+                    >
+                      <option value="Available">Available (Duty Ready)</option>
+                      <option value="On Trip">On Trip (In Transit)</option>
+                      <option value="On Leave">On Leave / Rest</option>
+                      <option value="Blacklisted">Blacklisted</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Driver Status *</label>
-              <select
-                value={driverForm.status}
-                onChange={(e) => setDriverForm({ ...driverForm, status: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
-                required
-              >
-                <option value="Available">Available (Duty Ready)</option>
-                <option value="On Trip">On Trip (In Transit)</option>
-                <option value="On Leave">On Leave / Rest</option>
-                <option value="Blacklisted">Blacklisted</option>
-              </select>
-            </div>
-          </div>
-        </div>
+              {/* SECTION 3: Bank & Payouts */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">3. Bank & Payout Details (Optional)</p>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Bank Name</label>
+                    <input
+                      placeholder="e.g. SBI"
+                      value={driverForm.bank_name}
+                      onChange={(e) => setDriverForm({ ...driverForm, bank_name: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-        {/* SECTION 3: Bank & Payouts */}
-        <div className="space-y-3 pt-2 border-t border-slate-100">
-          <p className="text-[11px] font-black text-slate-400 uppercase tracking-wider">3. Bank & Payout Details (Optional)</p>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Bank Name</label>
-              <input
-                placeholder="e.g. SBI"
-                value={driverForm.bank_name}
-                onChange={(e) => setDriverForm({ ...driverForm, bank_name: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">Account Number</label>
+                    <input
+                      placeholder="Account No"
+                      value={driverForm.bank_account_no}
+                      onChange={(e) => setDriverForm({ ...driverForm, bank_account_no: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">Account Number</label>
-              <input
-                placeholder="Account No"
-                value={driverForm.bank_account_no}
-                onChange={(e) => setDriverForm({ ...driverForm, bank_account_no: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-amber-500"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">IFSC Code</label>
+                    <input
+                      placeholder="SBIN0001234"
+                      value={driverForm.ifsc_code}
+                      onChange={(e) => setDriverForm({ ...driverForm, ifsc_code: e.target.value.toUpperCase() })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono uppercase focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">IFSC Code</label>
-              <input
-                placeholder="SBIN0001234"
-                value={driverForm.ifsc_code}
-                onChange={(e) => setDriverForm({ ...driverForm, ifsc_code: e.target.value.toUpperCase() })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono uppercase focus:outline-none focus:border-amber-500"
-              />
-            </div>
+                  <div>
+                    <label className="text-slate-700 font-bold block mb-1">UPI ID</label>
+                    <input
+                      placeholder="name@upi"
+                      value={driverForm.upi_id}
+                      onChange={(e) => setDriverForm({ ...driverForm, upi_id: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
+                    />
+                  </div>
+                </div>
+              </div>
 
-            <div>
-              <label className="text-slate-700 font-bold block mb-1">UPI ID</label>
-              <input
-                placeholder="name@upi"
-                value={driverForm.upi_id}
-                onChange={(e) => setDriverForm({ ...driverForm, upi_id: e.target.value })}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-            </div>
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setModalType(null)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 cursor-pointer"
+                >
+                  {modalType === 'EDIT_DRIVER' ? 'Update Driver Profile' : 'Register Driver'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-          <button
-            type="button"
-            onClick={() => setModalType(null)}
-            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold rounded-xl shadow-md shadow-orange-500/20 cursor-pointer"
-          >
-            {modalType === 'EDIT_DRIVER' ? 'Update Driver Profile' : 'Register Driver'}
-          </button>
-         </div>
-        </form>
-      </div>
-    </div>
       )}
 
     </div>
