@@ -712,6 +712,57 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     return { label: 'Valid', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' };
   };
 
+  // Helper: Convert any Excel date (Serial No, DD/MM/YYYY, Text) to YYYY-MM-DD
+  const parseExcelDate = (val) => {
+    if (!val) return null;
+
+    if (typeof val === 'number') {
+      const utcDays = Math.floor(val - 25569);
+      const date = new Date(utcDays * 86400 * 1000);
+      return date.toISOString().slice(0, 10);
+    }
+
+    const str = String(val).trim();
+
+    const dmyMatch = str.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (dmyMatch) {
+      const day = dmyMatch[1].padStart(2, '0');
+      const month = dmyMatch[2].padStart(2, '0');
+      const year = dmyMatch[3];
+      return `${year}-${month}-${day}`;
+    }
+
+    const ymdMatch = str.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+    if (ymdMatch) {
+      const year = ymdMatch[1];
+      const month = ymdMatch[2].padStart(2, '0');
+      const day = ymdMatch[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    const parsed = new Date(str);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+
+    return null;
+  };
+
+  // Helper: Resolve Base Plant Code from Name or Code
+  const resolvePlantCode = (inputVal) => {
+    if (!inputVal) return 'ALL';
+    const str = String(inputVal).trim();
+    if (str.toUpperCase() === 'ALL' || str.toLowerCase().includes('all plant')) return 'ALL';
+
+    const matchedSite = sites.find(s => 
+      (s.code || s.site_code)?.toUpperCase() === str.toUpperCase() ||
+      (s.name || s.site_name)?.toLowerCase() === str.toLowerCase() ||
+      str.toLowerCase().includes((s.code || s.site_code)?.toLowerCase())
+    );
+
+    return matchedSite ? (matchedSite.code || matchedSite.site_code) : str;
+  };
+
   // Direct Table Click-to-Update Status
   const handleQuickStatusChange = async (driverId, newStatus) => {
     const previousDrivers = [...drivers];
@@ -721,7 +772,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     try {
       const { error } = await supabase
         .from('drivers')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .update({ status: newStatus })
         .eq('id', driverId);
 
       if (error) {
@@ -818,8 +869,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       photo_url: driverForm.photo_url || null,
       license_doc_url: driverForm.license_doc_url || null,
       updated_by: currentUser?.name || 'SuperAdmin',
-      last_action_note: `Profile updated by ${currentUser?.name || 'SuperAdmin'}`,
-      updated_at: new Date().toISOString()
+      last_action_note: `Profile updated by ${currentUser?.name || 'SuperAdmin'}`
     };
 
     const targetId = selectedDriver.id;
@@ -986,7 +1036,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     reader.onload = async (evt) => {
       try {
         const bstr = evt.target.result;
-        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wb = XLSX.read(bstr, { type: 'binary', cellDates: false });
         const wsName = wb.SheetNames[0];
         const rawData = XLSX.utils.sheet_to_json(wb.Sheets[wsName]);
 
@@ -1024,15 +1074,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               rawStatus = 'Available';
             }
 
+            const rawExpiry = row['DL Expiry Date (YYYY-MM-DD) *'] || row['DL Expiry Date (YYYY-MM-DD)'] || row['DL Expiry Date'] || row['license_expiry'];
+            const parsedExpiryDate = parseExcelDate(rawExpiry);
+
+            const rawPlant = row['Base Plant Code *'] || row['Base Plant Code'] || row['Base Plant'] || row['assigned_plant'];
+            const resolvedPlant = resolvePlantCode(rawPlant);
+
             validDrivers.push({
               name,
               phone,
               emergency_phone: (row['Emergency Contact *'] || row['Emergency Contact'] || '').toString().trim(),
               license_no: dlNo,
-              license_expiry: row['DL Expiry Date (YYYY-MM-DD) *'] || row['DL Expiry Date (YYYY-MM-DD)'] || row['license_expiry'] || null,
+              license_expiry: parsedExpiryDate,
               license_category: row['DL Category *'] || row['DL Category'] || 'TRANS (Heavy Bulkers)',
               assigned_vehicle: (row['Assigned Truck'] || 'Unassigned').toString().toUpperCase().trim(),
-              assigned_plant: (row['Base Plant Code *'] || row['Base Plant Code'] || row['Base Plant'] || 'ALL').toString().trim(),
+              assigned_plant: resolvedPlant,
               experience_years: parseFloat(row['Driving Experience (Years)'] || row['experience_years']) || 0,
               aadhaar_no: (row['Aadhaar Number'] || row['aadhaar_no'] || '').toString().trim(),
               address: (row['Permanent / Local Address'] || row['Address'] || row['address'] || '').toString().trim(),
@@ -1078,8 +1134,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       photo_url: profileForm.photo_url || null,
       password_hash: profileForm.password,
       updated_by: currentUser?.name || 'SuperAdmin',
-      last_action_note: 'Self-profile details updated',
-      updated_at: new Date().toISOString()
+      last_action_note: 'Self-profile details updated'
     };
 
     const { error } = await supabase
@@ -1155,7 +1210,6 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
     const matchesPlant = driverPlantFilter === 'ALL' || d.assigned_plant === driverPlantFilter;
 
-    // Strict Normalization for Status Match
     let currentStatus = (d.status || '').trim();
     if (currentStatus.toLowerCase().includes('avail') || currentStatus.toLowerCase().includes('duty') || currentStatus === 'Active') {
       currentStatus = 'Available';
