@@ -826,7 +826,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   });
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-800 flex flex-col font-sans select-none">
+    <div className="h-screen w-screen overflow-hidden bg-[#f8fafc] text-slate-800 flex flex-col font-sans select-none">
       
       {/* Toast Notification */}
       {toast.open && (
@@ -890,7 +890,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       )}
 
       {/* Top Header */}
-      <header className="bg-[#0f172a] border-b border-slate-800 sticky top-0 z-40 px-6 py-3 shadow-md">
+      <header className="bg-[#0f172a] border-b border-slate-800 sticky top-0 z-40 px-6 py-3 shadow-md shrink-0">
         <div className="flex items-center justify-between w-full">
           
           <div className="flex items-center gap-3">
@@ -989,195 +989,195 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       <div className="flex-1 flex overflow-hidden">
         
         {/* Left Sidebar */}
-        <aside className="w-68 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3 shrink-0 shadow-lg overflow-y-auto">
+        <aside className="w-72 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3.5 shrink-0 shadow-xl overflow-y-auto sticky top-0 h-[calc(100vh-65px)] select-none">
           <div className="space-y-4 flex-1">
             
             {/* OPERATIONS & DISPATCH */}
-            <div className="space-y-0.5">
-              <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+            <div className="space-y-1">
+              <div className="px-3.5 py-1 text-[11px] font-black text-slate-400 uppercase tracking-wider">
                 Operations & Dispatch
               </div>
 
               <button
                 onClick={() => handleMenuChange('dashboard')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'dashboard' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <LayoutDashboard className={`w-4 h-4 ${activeMenu === 'dashboard' ? 'text-white' : 'text-blue-400'}`} />
+                <LayoutDashboard className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'dashboard' ? 'text-white' : 'text-blue-400'}`} />
                 <span>Dashboard Overview</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('sites')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'sites' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Building2 className={`w-4 h-4 ${activeMenu === 'sites' ? 'text-white' : 'text-indigo-400'}`} />
+                <Building2 className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'sites' ? 'text-white' : 'text-indigo-400'}`} />
                 <span>Site / Plant Master</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('destinations')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'destinations' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <MapPin className={`w-4 h-4 ${activeMenu === 'destinations' ? 'text-white' : 'text-amber-400'}`} />
+                <MapPin className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'destinations' ? 'text-white' : 'text-amber-400'}`} />
                 <span>Destination Hubs</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('vehicles')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'vehicles' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Truck className={`w-4 h-4 ${activeMenu === 'vehicles' ? 'text-white' : 'text-emerald-400'}`} />
+                <Truck className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'vehicles' ? 'text-white' : 'text-emerald-400'}`} />
                 <span>Vehicle & Fleet</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('drivers')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'drivers' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <UserCheck className={`w-4 h-4 ${activeMenu === 'drivers' ? 'text-white' : 'text-purple-400'}`} />
+                <UserCheck className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'drivers' ? 'text-white' : 'text-purple-400'}`} />
                 <span>Driver Directory</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('trips')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'trips' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <FileText className={`w-4 h-4 ${activeMenu === 'trips' ? 'text-white' : 'text-cyan-400'}`} />
+                <FileText className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'trips' ? 'text-white' : 'text-cyan-400'}`} />
                 <span>Trip & LR Register</span>
               </button>
             </div>
 
             {/* ACCOUNTS & ASSETS */}
-            <div className="space-y-0.5">
-              <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+            <div className="space-y-1">
+              <div className="px-3.5 py-1 text-[11px] font-black text-slate-400 uppercase tracking-wider">
                 Accounts & Assets
               </div>
 
               <button
                 onClick={() => handleMenuChange('finance')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'finance' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <DollarSign className={`w-4 h-4 ${activeMenu === 'finance' ? 'text-white' : 'text-emerald-400'}`} />
+                <DollarSign className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'finance' ? 'text-white' : 'text-emerald-400'}`} />
                 <span>Finance & Diesel</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('tyres')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'tyres' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Disc className={`w-4 h-4 ${activeMenu === 'tyres' ? 'text-white' : 'text-amber-400'}`} />
+                <Disc className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'tyres' ? 'text-white' : 'text-amber-400'}`} />
                 <span>Tyre Inventory</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('compliance')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'compliance' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <ShieldCheck className={`w-4 h-4 ${activeMenu === 'compliance' ? 'text-white' : 'text-rose-400'}`} />
+                <ShieldCheck className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'compliance' ? 'text-white' : 'text-rose-400'}`} />
                 <span>Vehicle Compliance</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('workshop')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'workshop' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Wrench className={`w-4 h-4 ${activeMenu === 'workshop' ? 'text-white' : 'text-orange-400'}`} />
+                <Wrench className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'workshop' ? 'text-white' : 'text-orange-400'}`} />
                 <span>Workshop & Repairs</span>
               </button>
             </div>
 
             {/* SYSTEM & GOVERNANCE */}
-            <div className="space-y-0.5">
-              <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
+            <div className="space-y-1">
+              <div className="px-3.5 py-1 text-[11px] font-black text-slate-400 uppercase tracking-wider">
                 System & Governance
               </div>
 
               <button
                 onClick={() => handleMenuChange('users')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'users' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Users className={`w-4 h-4 ${activeMenu === 'users' ? 'text-white' : 'text-purple-400'}`} />
+                <Users className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'users' ? 'text-white' : 'text-purple-400'}`} />
                 <span>User & Staff Accounts</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('access')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'access' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <Key className={`w-4 h-4 ${activeMenu === 'access' ? 'text-white' : 'text-amber-400'}`} />
+                <Key className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'access' ? 'text-white' : 'text-amber-400'}`} />
                 <span>Access & RBAC Matrix</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('reports')}
-                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'reports' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <BarChart3 className={`w-4 h-4 ${activeMenu === 'reports' ? 'text-white' : 'text-teal-400'}`} />
+                <BarChart3 className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'reports' ? 'text-white' : 'text-teal-400'}`} />
                 <span>Reports & MIS</span>
               </button>
 
               <button
                 onClick={() => handleMenuChange('audit-logs')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13px] font-bold transition cursor-pointer ${
                   activeMenu === 'audit-logs' 
                     ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-500 text-white shadow-lg shadow-blue-500/25 border border-cyan-400/30' 
                     : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-3">
-                  <History className={`w-4 h-4 ${activeMenu === 'audit-logs' ? 'text-white' : 'text-sky-400'}`} />
+                <div className="flex items-center gap-3.5">
+                  <History className={`w-4.5 h-4.5 shrink-0 ${activeMenu === 'audit-logs' ? 'text-white' : 'text-sky-400'}`} />
                   <span>Audit Trail Logs</span>
                 </div>
                 
@@ -1194,7 +1194,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </aside>
 
         {/* Dynamic Workspace */}
-        <main className="flex-1 overflow-y-auto p-6 space-y-6">
+        <main className="flex-1 h-full overflow-y-auto p-6 space-y-6">
 
           {/* 1. DASHBOARD OVERVIEW */}
           {activeMenu === 'dashboard' && (
