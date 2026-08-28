@@ -60,10 +60,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [drivers, setDrivers] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
 
-  // Driver Filters & Search States
+  // Driver Filters, Search & Bulk Delete States
   const [driverSearch, setDriverSearch] = useState('');
   const [driverPlantFilter, setDriverPlantFilter] = useState('ALL');
   const [driverStatusFilter, setDriverStatusFilter] = useState('ALL');
+  const [selectedDriverIds, setSelectedDriverIds] = useState([]);
 
   // Forensic Audit States
   const [selectedAuditLog, setSelectedAuditLog] = useState(null);
@@ -128,7 +129,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     address: '',
     license_no: '',
     license_expiry: '',
-    license_category: 'TRANS (Heavy)',
+    license_category: 'TRANS (Heavy Bulkers)',
     assigned_vehicle: 'Unassigned',
     assigned_plant: 'ALL',
     experience_years: '',
@@ -137,7 +138,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     bank_name: '',
     upi_id: '',
     status: 'Available',
-    photo_url: ''
+    photo_url: '',
+    license_doc_url: ''
   });
 
   const [resetPassValue, setResetPassValue] = useState('');
@@ -496,6 +498,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           setProfileForm(prev => ({ ...prev, photo_url: reader.result }));
         } else if (formType === 'driver') {
           setDriverForm(prev => ({ ...prev, photo_url: reader.result }));
+        } else if (formType === 'driver_dl') {
+          setDriverForm(prev => ({ ...prev, license_doc_url: reader.result }));
         } else {
           setUserForm(prev => ({ ...prev, photo_url: reader.result }));
         }
@@ -726,7 +730,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       address: (driverForm.address || '').trim(),
       license_no: cleanLicense,
       license_expiry: driverForm.license_expiry || null,
-      license_category: driverForm.license_category || 'TRANS (Heavy)',
+      license_category: driverForm.license_category || 'TRANS (Heavy Bulkers)',
       assigned_vehicle: (driverForm.assigned_vehicle || 'Unassigned').toUpperCase().trim(),
       assigned_plant: driverForm.assigned_plant || 'ALL',
       experience_years: parseFloat(driverForm.experience_years) || 0,
@@ -736,6 +740,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       upi_id: (driverForm.upi_id || '').trim(),
       status: driverForm.status || 'Available',
       photo_url: driverForm.photo_url || null,
+      license_doc_url: driverForm.license_doc_url || null,
       created_by: currentUser?.name || 'SuperAdmin',
       last_action_note: `Driver profile created by ${currentUser?.name || 'SuperAdmin'}`
     };
@@ -777,7 +782,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       address: (driverForm.address || '').trim(),
       license_no: cleanLicense,
       license_expiry: driverForm.license_expiry || null,
-      license_category: driverForm.license_category || 'TRANS (Heavy)',
+      license_category: driverForm.license_category || 'TRANS (Heavy Bulkers)',
       assigned_vehicle: (driverForm.assigned_vehicle || 'Unassigned').toUpperCase().trim(),
       assigned_plant: driverForm.assigned_plant || 'ALL',
       experience_years: parseFloat(driverForm.experience_years) || 0,
@@ -787,6 +792,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       upi_id: (driverForm.upi_id || '').trim(),
       status: driverForm.status,
       photo_url: driverForm.photo_url || null,
+      license_doc_url: driverForm.license_doc_url || null,
       updated_by: currentUser?.name || 'SuperAdmin',
       last_action_note: `Profile updated by ${currentUser?.name || 'SuperAdmin'}`,
       updated_at: new Date().toISOString()
@@ -816,6 +822,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       message: `Are you sure you want to remove driver ${driver.name} (${driver.license_no})?`,
       onConfirm: async () => {
         setDrivers(prev => prev.filter(d => d.id !== driver.id));
+        setSelectedDriverIds(prev => prev.filter(id => id !== driver.id));
 
         const { error } = await supabase.from('drivers').delete().eq('id', driver.id);
         if (error) {
@@ -830,6 +837,60 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     });
   };
 
+  // Multi-Select Handlers
+  const handleSelectAllDrivers = (e) => {
+    if (e.target.checked) {
+      setSelectedDriverIds(filteredDrivers.map(d => d.id));
+    } else {
+      setSelectedDriverIds([]);
+    }
+  };
+
+  const handleToggleDriverSelect = (id) => {
+    setSelectedDriverIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  // Bulk Delete Selected Drivers
+  const handleBulkDeleteDrivers = () => {
+    if (selectedDriverIds.length === 0) return;
+
+    setConfirmDialog({
+      open: true,
+      title: `Delete ${selectedDriverIds.length} Driver(s)`,
+      message: `Are you sure you want to permanently delete ${selectedDriverIds.length} selected driver record(s)? This action cannot be undone.`,
+      onConfirm: () => {
+        const idsToDelete = [...selectedDriverIds];
+        const previousDrivers = [...drivers];
+
+        setDrivers(prev => prev.filter(d => !idsToDelete.includes(d.id)));
+        setSelectedDriverIds([]);
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        showToast(`Deleted ${idsToDelete.length} drivers successfully!`);
+
+        (async () => {
+          try {
+            const { error } = await supabase
+              .from('drivers')
+              .delete()
+              .in('id', idsToDelete);
+
+            if (error) {
+              setDrivers(previousDrivers);
+              showToast('Error deleting drivers: ' + error.message, 'error');
+            } else {
+              logAuditActivity('DRIVER', 'BULK_DELETE', `Bulk removed ${idsToDelete.length} commercial drivers`);
+            }
+          } catch (err) {
+            setDrivers(previousDrivers);
+            console.error('Bulk delete error:', err);
+          }
+        })();
+      }
+    });
+  };
+
   const handleExportDriversExcel = () => {
     if (filteredDrivers.length === 0) {
       showToast('No driver records found to export.', 'warning');
@@ -838,16 +899,18 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
     const exportRows = filteredDrivers.map((d, idx) => ({
       'S.No': idx + 1,
-      'Driver Name': d.name,
-      'Mobile Number': d.phone,
-      'Emergency Contact': d.emergency_phone || '-',
-      'Commercial DL No': d.license_no,
-      'DL Expiry Date': d.license_expiry || '-',
-      'DL Category': d.license_category || 'TRANS',
+      'Driver Full Name *': d.name,
+      'Mobile Number *': d.phone,
+      'Emergency Contact *': d.emergency_phone || '-',
+      'Commercial DL No *': d.license_no,
+      'DL Expiry Date (YYYY-MM-DD) *': d.license_expiry || '-',
+      'DL Category *': d.license_category || 'TRANS (Heavy Bulkers)',
       'Assigned Truck': d.assigned_vehicle || 'Unassigned',
-      'Base Plant': d.assigned_plant || 'ALL',
-      'Status': d.status || 'Available',
+      'Base Plant Code *': d.assigned_plant || 'ALL',
+      'Driver Status *': d.status || 'Available',
+      'Driving Experience (Years)': d.experience_years || 0,
       'Aadhaar Number': d.aadhaar_no || '-',
+      'Permanent / Local Address': d.address || '-',
       'Bank Name': d.bank_name || '-',
       'Account Number': d.bank_account_no || '-',
       'IFSC Code': d.ifsc_code || '-',
@@ -865,16 +928,18 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const handleDownloadDriverTemplate = () => {
     const sampleData = [
       {
-        'Driver Name': 'Rameshwar Gurjar',
-        'Mobile Number': '9829012345',
-        'Emergency Contact': '9829054321',
-        'Commercial DL No': 'RJ14-20180012345',
-        'DL Expiry Date (YYYY-MM-DD)': '2028-12-31',
-        'DL Category': 'TRANS (Heavy)',
-        'Assigned Truck': 'RJ-14-GH-1234',
-        'Base Plant Code': '12001',
-        'Status': 'Available',
-        'Aadhaar Number': '123456789012',
+        'Driver Full Name *': 'Rameshwar Gurjar',
+        'Mobile Number *': '9829012345',
+        'Emergency Contact *': '9829054321',
+        'Commercial DL No *': 'RJ14-20180012345',
+        'DL Expiry Date (YYYY-MM-DD) *': '2028-12-31',
+        'DL Category *': 'TRANS (Heavy Bulkers)',
+        'Assigned Truck': 'RJ14-GH-1234',
+        'Base Plant Code *': '12001',
+        'Driver Status *': 'Available',
+        'Driving Experience (Years)': '5',
+        'Aadhaar Number': '',
+        'Permanent / Local Address': 'Village Rampura, Post Bassi, Jaipur',
         'Bank Name': 'SBI',
         'Account Number': '30495839201',
         'IFSC Code': 'SBIN0001234',
@@ -886,7 +951,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Sample_Template');
     XLSX.writeFile(wb, 'BuddyFleets_Driver_Import_Template.xlsx');
-    showToast('Sample template downloaded!');
+    showToast('Complete sample template downloaded!');
   };
 
   const handleImportDriversExcel = (e) => {
@@ -910,9 +975,9 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         let duplicateCount = 0;
 
         rawData.forEach(row => {
-          const dlNo = (row['Commercial DL No'] || row['license_no'] || '').toString().toUpperCase().trim();
-          const phone = (row['Mobile Number'] || row['phone'] || '').toString().trim();
-          const name = (row['Driver Name'] || row['name'] || '').toString().trim();
+          const dlNo = (row['Commercial DL No *'] || row['Commercial DL No'] || row['license_no'] || '').toString().toUpperCase().trim();
+          const phone = (row['Mobile Number *'] || row['Mobile Number'] || row['phone'] || '').toString().trim();
+          const name = (row['Driver Full Name *'] || row['Driver Full Name'] || row['Driver Name'] || row['name'] || '').toString().trim();
 
           if (!name || !dlNo || !phone) return;
 
@@ -922,21 +987,34 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
           if (isDup) {
             duplicateCount++;
           } else {
+            let rawStatus = (row['Driver Status *'] || row['Driver Status'] || row['Status'] || 'Available').toString().trim();
+            if (rawStatus.toLowerCase().includes('avail') || rawStatus.toLowerCase().includes('act')) {
+              rawStatus = 'Available';
+            } else if (rawStatus.toLowerCase().includes('trip')) {
+              rawStatus = 'On Trip';
+            } else if (rawStatus.toLowerCase().includes('leave') || rawStatus.toLowerCase().includes('rest')) {
+              rawStatus = 'On Leave';
+            } else if (rawStatus.toLowerCase().includes('black')) {
+              rawStatus = 'Blacklisted';
+            }
+
             validDrivers.push({
               name,
               phone,
-              emergency_phone: (row['Emergency Contact'] || '').toString().trim(),
+              emergency_phone: (row['Emergency Contact *'] || row['Emergency Contact'] || '').toString().trim(),
               license_no: dlNo,
-              license_expiry: row['DL Expiry Date (YYYY-MM-DD)'] || null,
-              license_category: row['DL Category'] || 'TRANS (Heavy)',
+              license_expiry: row['DL Expiry Date (YYYY-MM-DD) *'] || row['DL Expiry Date (YYYY-MM-DD)'] || row['license_expiry'] || null,
+              license_category: row['DL Category *'] || row['DL Category'] || 'TRANS (Heavy Bulkers)',
               assigned_vehicle: (row['Assigned Truck'] || 'Unassigned').toString().toUpperCase().trim(),
-              assigned_plant: (row['Base Plant Code'] || 'ALL').toString().trim(),
-              aadhaar_no: (row['Aadhaar Number'] || '').toString().trim(),
+              assigned_plant: (row['Base Plant Code *'] || row['Base Plant Code'] || row['Base Plant'] || 'ALL').toString().trim(),
+              experience_years: parseFloat(row['Driving Experience (Years)'] || row['experience_years']) || 0,
+              aadhaar_no: (row['Aadhaar Number'] || row['aadhaar_no'] || '').toString().trim(),
+              address: (row['Permanent / Local Address'] || row['Address'] || row['address'] || '').toString().trim(),
               bank_name: (row['Bank Name'] || '').toString().trim(),
               bank_account_no: (row['Account Number'] || '').toString().trim(),
               ifsc_code: (row['IFSC Code'] || '').toString().toUpperCase().trim(),
               upi_id: (row['UPI ID'] || '').toString().trim(),
-              status: row['Status'] || 'Available',
+              status: rawStatus,
               created_by: currentUser?.name || 'SuperAdmin',
               last_action_note: 'Bulk imported via Excel'
             });
@@ -1050,7 +1128,20 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     );
 
     const matchesPlant = driverPlantFilter === 'ALL' || d.assigned_plant === driverPlantFilter;
-    const matchesStatus = driverStatusFilter === 'ALL' || d.status === driverStatusFilter;
+
+    let matchesStatus = true;
+    if (driverStatusFilter !== 'ALL') {
+      const currentStatus = (d.status || '').toLowerCase();
+      if (driverStatusFilter === 'Available') {
+        matchesStatus = currentStatus.includes('avail') || currentStatus.includes('act');
+      } else if (driverStatusFilter === 'On Trip') {
+        matchesStatus = currentStatus.includes('trip');
+      } else if (driverStatusFilter === 'On Leave') {
+        matchesStatus = currentStatus.includes('leave') || currentStatus.includes('rest');
+      } else if (driverStatusFilter === 'Blacklisted') {
+        matchesStatus = currentStatus.includes('black');
+      }
+    }
 
     return matchesSearch && matchesPlant && matchesStatus;
   });
@@ -1711,6 +1802,18 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
                 {/* Bulk Actions & Add Button */}
                 <div className="flex flex-wrap items-center gap-2">
+                  
+                  {/* Dynamic Bulk Delete Button */}
+                  {selectedDriverIds.length > 0 && (
+                    <button
+                      onClick={handleBulkDeleteDrivers}
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 font-bold text-xs rounded-xl transition cursor-pointer shadow-xs animate-in zoom-in-95"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Selected ({selectedDriverIds.length})</span>
+                    </button>
+                  )}
+
                   <button
                     onClick={handleDownloadDriverTemplate}
                     className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
@@ -1751,7 +1854,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                         address: '',
                         license_no: '',
                         license_expiry: '',
-                        license_category: 'TRANS (Heavy)',
+                        license_category: 'TRANS (Heavy Bulkers)',
                         assigned_vehicle: 'Unassigned',
                         assigned_plant: 'ALL',
                         experience_years: '',
@@ -1760,7 +1863,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                         bank_name: '',
                         upi_id: '',
                         status: 'Available',
-                        photo_url: ''
+                        photo_url: '',
+                        license_doc_url: ''
                       });
                       setModalType('ADD_DRIVER');
                     }}
@@ -1825,6 +1929,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50/90 text-slate-500 font-extrabold border-b border-slate-100">
                       <tr>
+                        <th className="p-4 w-10">
+                          <input
+                            type="checkbox"
+                            checked={filteredDrivers.length > 0 && selectedDriverIds.length === filteredDrivers.length}
+                            onChange={handleSelectAllDrivers}
+                            className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                          />
+                        </th>
                         <th className="p-4">Driver Profile</th>
                         <th className="p-4">Mobile & Emergency</th>
                         <th className="p-4">Commercial DL & Expiry</th>
@@ -1836,17 +1948,27 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                       {filteredDrivers.length === 0 ? (
                         <tr>
-                          <td colSpan="6" className="p-8 text-center text-slate-400">
+                          <td colSpan="7" className="p-8 text-center text-slate-400">
                             No drivers matching your filter criteria.
                           </td>
                         </tr>
                       ) : (
                         filteredDrivers.map((d) => {
                           const dlStatus = getDlExpiryStatus(d.license_expiry);
+                          const isSelected = selectedDriverIds.includes(d.id);
 
                           return (
-                            <tr key={d.id} className="hover:bg-amber-50/20 transition">
+                            <tr key={d.id} className={`transition ${isSelected ? 'bg-amber-50/60' : 'hover:bg-amber-50/20'}`}>
                               
+                              <td className="p-4">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  onChange={() => handleToggleDriverSelect(d.id)}
+                                  className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 cursor-pointer"
+                                />
+                              </td>
+
                               {/* Profile & Photo */}
                               <td className="p-4 flex items-center gap-3">
                                 {d.photo_url ? (
@@ -1877,7 +1999,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
                               {/* DL & Expiry Badges */}
                               <td className="p-4">
-                                <p className="font-mono font-black text-slate-900 text-[13px]">{d.license_no}</p>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-black text-slate-900 text-[13px]">{d.license_no}</span>
+                                  {d.license_doc_url && (
+                                    <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-bold border border-blue-200" title="DL Copy Attached">
+                                      DOC
+                                    </span>
+                                  )}
+                                </div>
                                 <div className="flex items-center gap-1.5 mt-1">
                                   <span className={`px-2 py-0.5 rounded-md text-[10px] border ${dlStatus.color}`}>
                                     {dlStatus.label}
@@ -1901,11 +2030,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                               {/* Operational Status */}
                               <td className="p-4">
                                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                                  d.status === 'Available'
+                                  (d.status || '').toLowerCase().includes('avail') || (d.status || '').toLowerCase().includes('act')
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : d.status === 'On Trip'
+                                    : (d.status || '').toLowerCase().includes('trip')
                                     ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : d.status === 'On Leave'
+                                    : (d.status || '').toLowerCase().includes('leave')
                                     ? 'bg-amber-50 text-amber-700 border-amber-200'
                                     : 'bg-rose-50 text-rose-700 border-rose-200'
                                 }`}>
@@ -1927,7 +2056,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                         address: d.address || '',
                                         license_no: d.license_no || '',
                                         license_expiry: d.license_expiry || '',
-                                        license_category: d.license_category || 'TRANS (Heavy)',
+                                        license_category: d.license_category || 'TRANS (Heavy Bulkers)',
                                         assigned_vehicle: d.assigned_vehicle || 'Unassigned',
                                         assigned_plant: d.assigned_plant || 'ALL',
                                         experience_years: d.experience_years || '',
@@ -1936,7 +2065,8 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                         bank_name: d.bank_name || '',
                                         upi_id: d.upi_id || '',
                                         status: d.status || 'Available',
-                                        photo_url: d.photo_url || ''
+                                        photo_url: d.photo_url || '',
+                                        license_doc_url: d.license_doc_url || ''
                                       });
                                       setModalType('EDIT_DRIVER');
                                     }}
@@ -2245,7 +2375,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                               <span className="text-slate-400 text-[11px] font-mono ml-1.5">(@{log.performed_by_username || 'system'})</span>
                             </td>
                             <td className="p-3.5">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
                                 {log.ip_address || '127.0.0.1'}
                               </span>
                             </td>
@@ -2973,7 +3103,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 6. Add / Edit Driver Modal (Complete 3-Section Form) */}
+      {/* 6. Add / Edit Driver Modal (Complete with DL Upload) */}
       {(modalType === 'ADD_DRIVER' || modalType === 'EDIT_DRIVER') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-2xl p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
@@ -3092,6 +3222,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     />
                   </div>
                 </div>
+
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">Permanent / Local Address</label>
+                  <textarea
+                    rows={2}
+                    placeholder="Enter complete permanent address"
+                    value={driverForm.address}
+                    onChange={(e) => setDriverForm({ ...driverForm, address: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 resize-none"
+                  />
+                </div>
               </div>
 
               {/* SECTION 2: License & Operations */}
@@ -3129,10 +3270,48 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
                       required
                     >
-                      <option value="TRANS (Heavy)">TRANS (Heavy Bulkers)</option>
+                      <option value="TRANS (Heavy Bulkers)">TRANS (Heavy Bulkers)</option>
                       <option value="HMV">HMV (Heavy Motor Vehicle)</option>
                       <option value="LMV-Commercial">LMV-Commercial</option>
                     </select>
+                  </div>
+                </div>
+
+                {/* DL Document Upload Card */}
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between">
+                  <div>
+                    <p className="text-slate-800 font-bold">Driving License Copy (Front/Back)</p>
+                    <p className="text-[10px] text-slate-400">Attach photo/scanned copy of DL</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {driverForm.license_doc_url ? (
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={driverForm.license_doc_url}
+                          alt="DL Document"
+                          className="w-10 h-8 object-cover rounded-lg border border-slate-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setDriverForm(prev => ({ ...prev, license_doc_url: '' }))}
+                          className="text-rose-600 hover:text-rose-800 font-bold text-xs cursor-pointer"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl cursor-pointer shadow-2xs">
+                        <Upload className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Upload DL Document</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handlePhotoUpload(e, 'driver_dl')}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
 
@@ -3169,7 +3348,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   <div>
                     <label className="text-slate-700 font-bold block mb-1">Driver Status *</label>
                     <select
-                      value={driverForm.status}
+                      value={
+                        driverForm.status?.includes('Trip') ? 'On Trip' :
+                        driverForm.status?.includes('Leave') ? 'On Leave' :
+                        driverForm.status?.includes('Black') ? 'Blacklisted' : 'Available'
+                      }
                       onChange={(e) => setDriverForm({ ...driverForm, status: e.target.value })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
                       required
