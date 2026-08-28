@@ -97,7 +97,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
   const [vehicleForm, setVehicleForm] = useState({ vehicle_no: '', vehicle_type: 'Bulker', capacity_mt: 40, assigned_site: '' });
   
-  // User Form with full profile fields
+  // User Form
   const [userForm, setUserForm] = useState({
     username: '',
     password_hash: '',
@@ -112,7 +112,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
   const [driverForm, setDriverForm] = useState({ name: '', phone: '', license_no: '', assigned_vehicle: '', status: 'Active' });
   const [resetPassValue, setResetPassValue] = useState('');
   
-  // Self Profile Form with photo, phone, email & password
+  // Profile Form
   const [profileForm, setProfileForm] = useState({
     name: currentUser?.name || 'Admin',
     phone: currentUser?.phone || '',
@@ -121,7 +121,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     password: currentUser?.password_hash || ''
   });
 
-  // 1. Fetch Client IP on Mount
+  // Fetch Public IP
   useEffect(() => {
     fetch('https://api.ipify.org?format=json')
       .then(res => res.json())
@@ -188,7 +188,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // Real-time Subscriptions (Sync Direct Payload)
+  // Real-time Subscriptions
   useEffect(() => {
     fetchAllData();
 
@@ -380,10 +380,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
     const { error } = await supabase
       .from('sites')
-      .update({
-        is_active: nextStatus,
-        updated_at: new Date().toISOString()
-      })
+      .update({ is_active: nextStatus, updated_at: new Date().toISOString() })
       .eq('id', site.id);
 
     if (error) {
@@ -420,7 +417,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  // ================= USER PHOTO UPLOAD & MULTI-PLANT HELPERS =================
+  // Photo Upload Handler
   const handlePhotoUpload = (e, formType = 'user') => {
     const file = e.target.files?.[0];
     if (file) {
@@ -440,6 +437,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
+  // Multi-Plant Selection Toggle
   const handlePlantToggle = (plantCode) => {
     setUserForm(prev => {
       let current = [...(prev.assigned_plants || [])];
@@ -509,11 +507,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
+  // Update User Details (Allows SuperAdmin to edit username freely)
   const handleUpdateUser = async (e) => {
     e.preventDefault();
     if (!selectedUser) return;
 
+    const cleanUser = userForm.username.trim();
     const updatedUserObj = {
+      username: cleanUser,
       name: userForm.name.trim(),
       role: userForm.role,
       phone: userForm.phone.trim(),
@@ -536,7 +537,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       fetchAllData();
       showToast('Error: ' + error.message, 'error');
     } else {
-      await logAuditActivity('USER', 'UPDATE', `Updated user details for @${selectedUser.username} (${userForm.name})`);
+      await logAuditActivity('USER', 'UPDATE', `Updated user details for @${cleanUser} (${userForm.name})`);
       setModalType(null);
       setSelectedUser(null);
       setPlantDropdownOpen(false);
@@ -544,9 +545,13 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
+  // Self & SuperAdmin Delete Protection
   const handleDeleteUser = (user) => {
-    if (user.id === currentUser?.id) {
-      showToast('You cannot delete your own logged-in administrator account.', 'error');
+    const isSelf = user.id === currentUser?.id || user.username?.toLowerCase() === currentUser?.username?.toLowerCase();
+    const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.username?.toLowerCase() === 'admin';
+
+    if (isSelf || isSuperAdmin) {
+      showToast('Security Alert: Administrator / Super Admin account cannot be deleted.', 'error');
       return;
     }
 
@@ -593,7 +598,16 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
+  // Self & SuperAdmin Status Toggle Protection
   const handleToggleUserStatus = async (user) => {
+    const isSelf = user.id === currentUser?.id || user.username?.toLowerCase() === currentUser?.username?.toLowerCase();
+    const isSuperAdmin = user.role === 'SUPER_ADMIN' || user.username?.toLowerCase() === 'admin';
+
+    if (isSelf || isSuperAdmin) {
+      showToast('Security Alert: You cannot suspend your own active administrator account.', 'warning');
+      return;
+    }
+
     const nextStatus = !user.is_active;
     setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_active: nextStatus } : u));
 
@@ -822,7 +836,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 1. Top Header */}
+      {/* Top Header */}
       <header className="bg-[#0f172a] border-b border-slate-800 sticky top-0 z-40 px-6 py-3 shadow-md">
         <div className="flex items-center justify-between w-full">
           
@@ -918,14 +932,14 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       </header>
 
-      {/* 2. Main Body */}
+      {/* Main Body */}
       <div className="flex-1 flex overflow-hidden">
         
         {/* Left Sidebar */}
         <aside className="w-68 bg-[#0f172a] border-r border-slate-800 flex flex-col p-3 shrink-0 shadow-lg overflow-y-auto">
           <div className="space-y-4 flex-1">
             
-            {/* GROUP 1: OPERATIONS & DISPATCH */}
+            {/* OPERATIONS & DISPATCH */}
             <div className="space-y-0.5">
               <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 Operations & Dispatch
@@ -1004,7 +1018,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               </button>
             </div>
 
-            {/* GROUP 2: ACCOUNTS & ASSETS */}
+            {/* ACCOUNTS & ASSETS */}
             <div className="space-y-0.5">
               <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 Accounts & Assets
@@ -1059,7 +1073,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
               </button>
             </div>
 
-            {/* GROUP 3: SYSTEM & GOVERNANCE */}
+            {/* SYSTEM & GOVERNANCE */}
             <div className="space-y-0.5">
               <div className="px-3 py-1.5 text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
                 System & Governance
@@ -1500,6 +1514,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       photo_url: '',
                       assigned_plants: ['ALL']
                     });
+                    setPlantDropdownOpen(false);
                     setModalType('ADD_USER');
                   }}
                   className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold px-4 py-2.5 rounded-2xl text-xs transition shadow-md shadow-purple-500/20 cursor-pointer"
@@ -1526,6 +1541,11 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                       {users.map((u) => {
                         const userRoleLabel = USER_ROLES.find(r => r.value === u.role)?.label || u.role;
                         const plants = Array.isArray(u.assigned_plants) ? u.assigned_plants : (u.site_access ? [u.site_access] : ['ALL']);
+                        
+                        // Self & SuperAdmin check
+                        const isSelf = u.id === currentUser?.id || u.username?.toLowerCase() === currentUser?.username?.toLowerCase();
+                        const isSuperAdmin = u.role === 'SUPER_ADMIN' || u.username?.toLowerCase() === 'admin';
+                        const isProtected = isSelf || isSuperAdmin;
 
                         return (
                           <tr key={u.id} className="hover:bg-purple-50/30 transition">
@@ -1542,7 +1562,12 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                 </div>
                               )}
                               <div>
-                                <p className="font-bold text-slate-900 text-sm">{u.name}</p>
+                                <p className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
+                                  {u.name}
+                                  {isSelf && (
+                                    <span className="text-[9px] font-black bg-blue-100 text-blue-700 px-1.5 py-0.2 rounded-md">YOU</span>
+                                  )}
+                                </p>
                                 <p className="text-[11px] text-slate-400 font-mono">@{u.username}</p>
                               </div>
                             </td>
@@ -1574,19 +1599,25 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                               </div>
                             </td>
 
+                            {/* Status Button: Protected for self / Super Admin */}
                             <td className="p-4">
                               <button
+                                disabled={isProtected}
                                 onClick={() => handleToggleUserStatus(u)}
-                                className={`px-3 py-1 rounded-full text-[10px] font-bold border transition cursor-pointer ${
-                                  u.is_active 
+                                title={isProtected ? 'You cannot suspend your own account / Super Admin' : 'Click to Toggle Status'}
+                                className={`px-3 py-1 rounded-full text-[10px] font-bold border transition ${
+                                  isProtected ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
+                                } ${
+                                  u.is_active !== false 
                                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
                                     : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
                                 }`}
                               >
-                                {u.is_active ? 'Active' : 'Suspended'}
+                                {u.is_active !== false ? 'Active' : 'Suspended'}
                               </button>
                             </td>
 
+                            {/* Actions Column */}
                             <td className="p-4 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
@@ -1606,7 +1637,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                     setModalType('EDIT_USER'); 
                                   }}
                                   className="p-1.5 bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 rounded-xl transition cursor-pointer"
-                                  title="Edit User"
+                                  title="Edit User Details"
                                 >
                                   <Edit3 className="w-3.5 h-3.5" />
                                 </button>
@@ -1619,10 +1650,16 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                   <Key className="w-3.5 h-3.5" />
                                 </button>
 
+                                {/* Delete Button: Protected for Self / Super Admin */}
                                 <button
+                                  disabled={isProtected}
                                   onClick={() => handleDeleteUser(u)}
-                                  className="p-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 rounded-xl transition cursor-pointer"
-                                  title="Delete User"
+                                  className={`p-1.5 rounded-xl transition ${
+                                    isProtected 
+                                      ? 'bg-slate-50 text-slate-300 cursor-not-allowed' 
+                                      : 'bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 cursor-pointer'
+                                  }`}
+                                  title={isProtected ? 'Cannot delete own / Super Admin account' : 'Delete User'}
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1740,7 +1777,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                               <span className="text-slate-400 text-[11px] font-mono ml-1.5">(@{log.performed_by_username || 'system'})</span>
                             </td>
                             <td className="p-3.5">
-                              <span className="px-2.5 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-mono text-[11px] font-bold border border-slate-200">
                                 {log.ip_address || '127.0.0.1'}
                               </span>
                             </td>
@@ -2097,7 +2134,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 3. ADD / EDIT USER MODAL (MANDATORY FIELDS + DROPDOWN MULTI-SELECT) */}
+      {/* 3. ADD / EDIT USER MODAL (FULL EDITING PERMISSIONS FOR SUPERADMIN) */}
       {(modalType === 'ADD_USER' || modalType === 'EDIT_USER') && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-lg p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
@@ -2169,19 +2206,16 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 />
               </div>
 
-              {/* Username & Password (Mandatory) */}
+              {/* Username & Password / Role Row */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="text-slate-700 font-bold block mb-1">
-                    Username * {modalType === 'EDIT_USER' && <span className="text-[10px] text-slate-400">(Read-Only)</span>}
-                  </label>
+                  <label className="text-slate-700 font-bold block mb-1">Username *</label>
                   <input
                     required
-                    disabled={modalType === 'EDIT_USER'}
                     placeholder="Enter Username"
                     value={userForm.username}
                     onChange={(e) => setUserForm({ ...userForm, username: e.target.value })}
-                    className="w-full bg-slate-50 disabled:bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-purple-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
@@ -2198,12 +2232,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                   </div>
                 ) : (
                   <div>
-                    <label className="text-slate-700 font-bold block mb-1">Account Type</label>
-                    <input
-                      disabled
-                      value="Active Staff User"
-                      className="w-full bg-slate-100 border border-slate-200 rounded-xl p-2.5 text-slate-500 font-medium"
-                    />
+                    <label className="text-slate-700 font-bold block mb-1">System Role *</label>
+                    <select
+                      value={userForm.role}
+                      onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500 font-medium"
+                      required
+                    >
+                      {USER_ROLES.map(r => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>
@@ -2235,20 +2274,22 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                 </div>
               </div>
 
-              {/* System Role (Mandatory) */}
-              <div>
-                <label className="text-slate-700 font-bold block mb-1">System Role *</label>
-                <select
-                  value={userForm.role}
-                  onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500 font-medium"
-                  required
-                >
-                  {USER_ROLES.map(r => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </select>
-              </div>
+              {/* System Role for ADD_USER */}
+              {modalType === 'ADD_USER' && (
+                <div>
+                  <label className="text-slate-700 font-bold block mb-1">System Role *</label>
+                  <select
+                    value={userForm.role}
+                    onChange={(e) => setUserForm({ ...userForm, role: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-purple-500 font-medium"
+                    required
+                  >
+                    {USER_ROLES.map(r => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Assigned Plant(s) Multi-Select Dropdown (Mandatory) */}
               <div className="relative">
@@ -2355,7 +2396,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
         </div>
       )}
 
-      {/* 5. EDIT SELF PROFILE MODAL (FULL FIELDS + MANDATORY) */}
+      {/* 5. EDIT SELF PROFILE MODAL */}
       {modalType === 'EDIT_PROFILE' && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in">
           <div className="bg-white rounded-3xl w-full max-w-md p-6 space-y-4 shadow-2xl border border-slate-200 overflow-y-auto max-h-[90vh]">
