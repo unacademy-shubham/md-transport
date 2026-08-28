@@ -712,6 +712,30 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     return { label: 'Valid', color: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-bold' };
   };
 
+  // Direct Table Click-to-Update Status
+  const handleQuickStatusChange = async (driverId, newStatus) => {
+    const previousDrivers = [...drivers];
+    setDrivers(prev => prev.map(d => d.id === driverId ? { ...d, status: newStatus } : d));
+    showToast(`Driver status updated to ${newStatus}`);
+
+    try {
+      const { error } = await supabase
+        .from('drivers')
+        .update({ status: newStatus, updated_at: new Date().toISOString() })
+        .eq('id', driverId);
+
+      if (error) {
+        setDrivers(previousDrivers);
+        showToast('Error updating status: ' + error.message, 'error');
+      } else {
+        logAuditActivity('DRIVER', 'STATUS_CHANGE', `Changed driver status to ${newStatus}`);
+      }
+    } catch (err) {
+      setDrivers(previousDrivers);
+      console.error(err);
+    }
+  };
+
   const handleCreateDriver = async (e) => {
     e.preventDefault();
     const cleanLicense = driverForm.license_no.toUpperCase().trim();
@@ -909,7 +933,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
       'Base Plant Code *': d.assigned_plant || 'ALL',
       'Driver Status *': d.status || 'Available',
       'Driving Experience (Years)': d.experience_years || 0,
-      'Aadhaar Number': d.aadhaar_no || '-',
+      'Aadhaar Number': d.aadhaar_no ? '[Aadhaar Redacted]' : '-',
       'Permanent / Local Address': d.address || '-',
       'Bank Name': d.bank_name || '-',
       'Account Number': d.bank_account_no || '-',
@@ -988,14 +1012,16 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
             duplicateCount++;
           } else {
             let rawStatus = (row['Driver Status *'] || row['Driver Status'] || row['Status'] || 'Available').toString().trim();
-            if (rawStatus.toLowerCase().includes('avail') || rawStatus.toLowerCase().includes('act')) {
+            if (rawStatus.toLowerCase().includes('avail') || rawStatus.toLowerCase().includes('act') || rawStatus.toLowerCase().includes('duty')) {
               rawStatus = 'Available';
-            } else if (rawStatus.toLowerCase().includes('trip')) {
+            } else if (rawStatus.toLowerCase().includes('trip') || rawStatus.toLowerCase().includes('transit')) {
               rawStatus = 'On Trip';
-            } else if (rawStatus.toLowerCase().includes('leave') || rawStatus.toLowerCase().includes('rest')) {
+            } else if (rawStatus.toLowerCase().includes('leave') || rawStatus.toLowerCase().includes('rest') || rawStatus.toLowerCase().includes('inact') || rawStatus.toLowerCase().includes('train')) {
               rawStatus = 'On Leave';
             } else if (rawStatus.toLowerCase().includes('black')) {
               rawStatus = 'Blacklisted';
+            } else {
+              rawStatus = 'Available';
             }
 
             validDrivers.push({
@@ -1117,7 +1143,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     );
   });
 
-  // Filtered Drivers Logic
+  // Filtered Drivers Logic (Clean Exact Match)
   const filteredDrivers = drivers.filter(d => {
     const query = driverSearch.toLowerCase().trim();
     const matchesSearch = !query || (
@@ -1129,19 +1155,21 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
 
     const matchesPlant = driverPlantFilter === 'ALL' || d.assigned_plant === driverPlantFilter;
 
-    let matchesStatus = true;
-    if (driverStatusFilter !== 'ALL') {
-      const currentStatus = (d.status || '').toLowerCase();
-      if (driverStatusFilter === 'Available') {
-        matchesStatus = currentStatus.includes('avail') || currentStatus.includes('act');
-      } else if (driverStatusFilter === 'On Trip') {
-        matchesStatus = currentStatus.includes('trip');
-      } else if (driverStatusFilter === 'On Leave') {
-        matchesStatus = currentStatus.includes('leave') || currentStatus.includes('rest');
-      } else if (driverStatusFilter === 'Blacklisted') {
-        matchesStatus = currentStatus.includes('black');
-      }
+    // Strict Normalization for Status Match
+    let currentStatus = (d.status || '').trim();
+    if (currentStatus.toLowerCase().includes('avail') || currentStatus.toLowerCase().includes('duty') || currentStatus === 'Active') {
+      currentStatus = 'Available';
+    } else if (currentStatus.toLowerCase().includes('trip') || currentStatus.toLowerCase().includes('transit')) {
+      currentStatus = 'On Trip';
+    } else if (currentStatus.toLowerCase().includes('leave') || currentStatus.toLowerCase().includes('rest') || currentStatus === 'Inactive' || currentStatus === 'Training') {
+      currentStatus = 'On Leave';
+    } else if (currentStatus.toLowerCase().includes('black')) {
+      currentStatus = 'Blacklisted';
+    } else {
+      currentStatus = 'Available';
     }
+
+    const matchesStatus = driverStatusFilter === 'ALL' || currentStatus === driverStatusFilter;
 
     return matchesSearch && matchesPlant && matchesStatus;
   });
@@ -2027,19 +2055,30 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                 </p>
                               </td>
 
-                              {/* Operational Status */}
+                              {/* Direct Click-to-Edit Operational Status */}
                               <td className="p-4">
-                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                                  (d.status || '').toLowerCase().includes('avail') || (d.status || '').toLowerCase().includes('act')
-                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                    : (d.status || '').toLowerCase().includes('trip')
-                                    ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                    : (d.status || '').toLowerCase().includes('leave')
-                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                    : 'bg-rose-50 text-rose-700 border-rose-200'
-                                }`}>
-                                  {d.status || 'Available'}
-                                </span>
+                                <select
+                                  value={
+                                    (d.status || '').toLowerCase().includes('trip') || (d.status || '').toLowerCase().includes('transit') ? 'On Trip' :
+                                    (d.status || '').toLowerCase().includes('leave') || (d.status || '').toLowerCase().includes('rest') || d.status === 'Inactive' || d.status === 'Training' ? 'On Leave' :
+                                    (d.status || '').toLowerCase().includes('black') ? 'Blacklisted' : 'Available'
+                                  }
+                                  onChange={(e) => handleQuickStatusChange(d.id, e.target.value)}
+                                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold border transition focus:outline-none cursor-pointer ${
+                                    (d.status || '').toLowerCase().includes('trip') || (d.status || '').toLowerCase().includes('transit')
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : (d.status || '').toLowerCase().includes('leave') || (d.status || '').toLowerCase().includes('rest') || d.status === 'Inactive' || d.status === 'Training'
+                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                      : (d.status || '').toLowerCase().includes('black')
+                                      ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  }`}
+                                >
+                                  <option value="Available" className="bg-white text-emerald-700 font-bold">🟢 Available</option>
+                                  <option value="On Trip" className="bg-white text-blue-700 font-bold">🔵 On Trip</option>
+                                  <option value="On Leave" className="bg-white text-amber-700 font-bold">🟡 On Leave</option>
+                                  <option value="Blacklisted" className="bg-white text-rose-700 font-bold">🔴 Blacklisted</option>
+                                </select>
                               </td>
 
                               {/* Actions */}
@@ -2064,7 +2103,7 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                                         ifsc_code: d.ifsc_code || '',
                                         bank_name: d.bank_name || '',
                                         upi_id: d.upi_id || '',
-                                        status: d.status || 'Available',
+                                        status: (d.status || '').toLowerCase().includes('trip') ? 'On Trip' : (d.status || '').toLowerCase().includes('leave') ? 'On Leave' : (d.status || '').toLowerCase().includes('black') ? 'Blacklisted' : 'Available',
                                         photo_url: d.photo_url || '',
                                         license_doc_url: d.license_doc_url || ''
                                       });
@@ -3349,17 +3388,17 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
                     <label className="text-slate-700 font-bold block mb-1">Driver Status *</label>
                     <select
                       value={
-                        driverForm.status?.includes('Trip') ? 'On Trip' :
-                        driverForm.status?.includes('Leave') ? 'On Leave' :
-                        driverForm.status?.includes('Black') ? 'Blacklisted' : 'Available'
+                        (driverForm.status || '').toLowerCase().includes('trip') || (driverForm.status || '').toLowerCase().includes('transit') ? 'On Trip' :
+                        (driverForm.status || '').toLowerCase().includes('leave') || (driverForm.status || '').toLowerCase().includes('rest') || driverForm.status === 'Inactive' || driverForm.status === 'Training' ? 'On Leave' :
+                        (driverForm.status || '').toLowerCase().includes('black') ? 'Blacklisted' : 'Available'
                       }
                       onChange={(e) => setDriverForm({ ...driverForm, status: e.target.value })}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 focus:outline-none focus:border-amber-500 font-medium"
                       required
                     >
-                      <option value="Available">Available (Duty Ready)</option>
-                      <option value="On Trip">On Trip (In Transit)</option>
-                      <option value="On Leave">On Leave / Rest</option>
+                      <option value="Available">Available</option>
+                      <option value="On Trip">On Trip</option>
+                      <option value="On Leave">On Leave</option>
                       <option value="Blacklisted">Blacklisted</option>
                     </select>
                   </div>
