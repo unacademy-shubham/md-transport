@@ -789,24 +789,35 @@ export default function SuperAdminDashboard({ currentUser, onLogout, onUserUpdat
     }
   };
 
-  const handleClearAllAuditLogs = () => {
+const handleClearAllAuditLogs = () => {
     setConfirmDialog({
       open: true,
       title: 'Flush All Audit Trail Records',
       message: 'Are you sure you want to completely clear all system activity logs? This action cannot be undone.',
-      onConfirm: async () => {
-        const { error } = await supabase
-          .from('audit_logs')
-          .delete()
-          .neq('id', '00000000-0000-0000-0000-000000000000');
-
-        if (error) {
-          showToast('Error clearing logs: ' + error.message, 'error');
-        } else {
-          setAuditLogs([]);
-          showToast('Audit trail logs cleared successfully!');
-        }
+      onConfirm: () => {
+        // 1. Instant UI Clear & Dialog Close (Zero Delay)
+        const previousLogs = [...auditLogs];
+        setAuditLogs([]);
         setConfirmDialog(prev => ({ ...prev, open: false }));
+        showToast('Audit trail logs cleared successfully!');
+
+        // 2. Non-blocking Background Database Purge
+        (async () => {
+          try {
+            const { error } = await supabase
+              .from('audit_logs')
+              .delete()
+              .gt('created_at', '1970-01-01');
+
+            if (error) {
+              setAuditLogs(previousLogs); // Rollback on error
+              showToast('Error clearing logs: ' + error.message, 'error');
+            }
+          } catch (err) {
+            setAuditLogs(previousLogs);
+            console.error('Clear logs error:', err);
+          }
+        })();
       }
     });
   };
