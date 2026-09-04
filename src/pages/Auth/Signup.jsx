@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
 const inputBase =
-  'w-full rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3.5 text-sm text-white placeholder-slate-500 outline-none transition-all duration-300 focus:border-cyan-400/60 focus:bg-white/[0.07] focus:ring-4 focus:ring-cyan-400/10';
+  'w-full rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-all duration-300 focus:border-cyan-400/60 focus:bg-white/[0.07] focus:ring-4 focus:ring-cyan-400/10';
 
 function AmbientOrb({ className = '' }) {
   return (
@@ -19,6 +19,144 @@ function AmbientOrb({ className = '' }) {
       }}
       className={`pointer-events-none absolute rounded-full blur-[110px] ${className}`}
     />
+  );
+}
+
+function LightTrail({
+  delay = 0,
+  duration = 8,
+  bottom = 'bottom-[16%]',
+  width = 'w-48',
+}) {
+  return (
+    <motion.div
+      initial={{
+        x: '-30vw',
+        opacity: 0,
+      }}
+      animate={{
+        x: '130vw',
+        opacity: [0, 0.4, 0.7, 0],
+      }}
+      transition={{
+        duration,
+        delay,
+        repeat: Infinity,
+        ease: 'linear',
+      }}
+      className={`pointer-events-none absolute left-0 ${bottom} h-px ${width} bg-gradient-to-r from-transparent via-cyan-300/60 to-transparent`}
+    />
+  );
+}
+
+function AnimatedTruck() {
+  return (
+    <motion.div
+      initial={{
+        x: '-20vw',
+        opacity: 0,
+      }}
+      animate={{
+        x: '125vw',
+        opacity: [0, 1, 1, 0],
+      }}
+      transition={{
+        duration: 22,
+        repeat: Infinity,
+        repeatDelay: 3,
+        ease: 'linear',
+      }}
+      className="pointer-events-none absolute bottom-[7%] left-0 z-[4]"
+    >
+      <div className="relative h-16 w-44 sm:h-20 sm:w-56">
+
+        {/* TRUCK UNDER GLOW */}
+        <div className="absolute -bottom-2 left-2 h-5 w-44 rounded-full bg-cyan-400/20 blur-xl sm:w-52" />
+
+        {/* TRAILER */}
+        <div className="absolute left-0 top-1 h-11 w-32 rounded-md border border-cyan-300/20 bg-gradient-to-br from-slate-700/80 via-slate-800/80 to-[#07101f] shadow-[0_0_30px_rgba(34,211,238,0.12)] sm:h-14 sm:w-40">
+          <div className="absolute left-2 right-2 top-2 h-1 rounded-full bg-cyan-400/40" />
+
+          <div className="absolute left-2 top-5 text-[7px] font-black uppercase tracking-[0.25em] text-slate-500 sm:top-6">
+            BUDDY FLEETS
+          </div>
+
+          <div className="absolute bottom-2 left-2 h-1 w-8 rounded-full bg-blue-400/30" />
+
+          <div className="absolute bottom-2 right-2 h-1 w-12 rounded-full bg-violet-400/30" />
+        </div>
+
+        {/* CABIN */}
+        <div className="absolute right-0 top-5 h-8 w-12 rounded-r-lg rounded-tl-sm border border-cyan-300/25 bg-gradient-to-br from-cyan-500/30 via-blue-600/30 to-violet-700/30 shadow-[0_0_25px_rgba(34,211,238,0.2)] sm:top-7 sm:h-10 sm:w-14">
+          <div className="absolute left-2 top-2 h-3 w-7 rounded-sm border border-cyan-300/20 bg-cyan-300/10 sm:h-4 sm:w-9" />
+        </div>
+
+        {/* FRONT LIGHT */}
+        <div className="absolute right-[-4px] top-[31px] h-2 w-2 rounded-full bg-cyan-200 shadow-[0_0_14px_rgba(34,211,238,1)] sm:top-[39px]" />
+
+        {/* WHEELS */}
+        <div className="absolute bottom-0 left-6 h-6 w-6 rounded-full border-2 border-slate-500 bg-[#020617] shadow-[0_0_10px_rgba(34,211,238,0.2)] sm:left-8 sm:h-7 sm:w-7" />
+
+        <div className="absolute bottom-0 right-6 h-6 w-6 rounded-full border-2 border-slate-500 bg-[#020617] shadow-[0_0_10px_rgba(34,211,238,0.2)] sm:right-7 sm:h-7 sm:w-7" />
+
+        {/* WHEEL HUBS */}
+        <div className="absolute bottom-[7px] left-[35px] h-2 w-2 rounded-full bg-slate-600 sm:bottom-[8px] sm:left-[42px]" />
+
+        <div className="absolute bottom-[7px] right-[35px] h-2 w-2 rounded-full bg-slate-600 sm:bottom-[8px] sm:right-[42px]" />
+      </div>
+    </motion.div>
+  );
+}
+
+function RadarPulse() {
+  return (
+    <div className="pointer-events-none absolute right-[10%] top-[35%] hidden h-40 w-40 lg:block">
+
+      <motion.div
+        animate={{
+          scale: [0.7, 1.4],
+          opacity: [0.45, 0],
+        }}
+        transition={{
+          duration: 3,
+          repeat: Infinity,
+          ease: 'easeOut',
+        }}
+        className="absolute inset-0 rounded-full border border-cyan-400/20"
+      />
+
+      <motion.div
+        animate={{
+          scale: [0.7, 1.4],
+          opacity: [0.3, 0],
+        }}
+        transition={{
+          duration: 3,
+          delay: 1.5,
+          repeat: Infinity,
+          ease: 'easeOut',
+        }}
+        className="absolute inset-0 rounded-full border border-cyan-400/15"
+      />
+
+      <div className="absolute inset-[20%] rounded-full border border-cyan-400/10" />
+
+      <div className="absolute inset-[38%] rounded-full border border-cyan-400/20 bg-cyan-400/5" />
+
+      <motion.div
+        animate={{
+          rotate: 360,
+        }}
+        transition={{
+          duration: 5,
+          repeat: Infinity,
+          ease: 'linear',
+        }}
+        className="absolute left-1/2 top-1/2 h-[1px] w-1/2 origin-left bg-gradient-to-r from-cyan-400/70 to-transparent"
+      />
+
+      <div className="absolute left-1/2 top-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-300 shadow-[0_0_15px_rgba(34,211,238,1)]" />
+    </div>
   );
 }
 
@@ -192,13 +330,13 @@ export default function Signup() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-x-hidden bg-[#050914] font-sans text-white">
+    <div className="relative h-screen w-full overflow-hidden bg-[#050914] font-sans text-white">
 
       {/* =====================================================
           CINEMATIC BACKGROUND
       ===================================================== */}
 
-      <div className="absolute inset-0 z-0">
+      <div className="fixed inset-0 z-0 overflow-hidden">
 
         <img
           src="https://images.unsplash.com/photo-1519003722824-194d4455a60c?q=85&w=2400&auto=format&fit=crop"
@@ -222,7 +360,7 @@ export default function Signup() {
       ===================================================== */}
 
       <div
-        className="pointer-events-none absolute inset-0 z-[1] opacity-[0.08]"
+        className="pointer-events-none fixed inset-0 z-[1] opacity-[0.08]"
         style={{
           backgroundImage:
             'linear-gradient(rgba(56,189,248,0.7) 1px, transparent 1px), linear-gradient(90deg, rgba(56,189,248,0.7) 1px, transparent 1px)',
@@ -241,7 +379,37 @@ export default function Signup() {
       <AmbientOrb className="bottom-[5%] left-[35%] h-72 w-72 bg-blue-600/15" />
 
       {/* =====================================================
-          TOP BRAND & CENTER NAVIGATION (PROPERLY SIZED)
+          MOVING LIGHT TRAILS
+      ===================================================== */}
+
+      <LightTrail delay={0} duration={8} bottom="bottom-[16%]" width="w-56" />
+
+      <LightTrail delay={2.5} duration={9} bottom="bottom-[21%]" width="w-72" />
+
+      <LightTrail delay={5} duration={7} bottom="bottom-[12%]" width="w-40" />
+
+      {/* =====================================================
+          ANIMATED TRUCK
+      ===================================================== */}
+
+      <AnimatedTruck />
+
+      {/* =====================================================
+          RADAR
+      ===================================================== */}
+
+      <RadarPulse />
+
+      {/* =====================================================
+          ROAD GLOW
+      ===================================================== */}
+
+      <div className="pointer-events-none fixed bottom-[7%] left-0 right-0 z-[3] h-px bg-gradient-to-r from-transparent via-cyan-400/30 to-transparent shadow-[0_0_18px_rgba(34,211,238,0.3)]" />
+
+      <div className="pointer-events-none fixed bottom-[5%] left-0 right-0 z-[2] h-16 bg-gradient-to-t from-cyan-500/[0.05] to-transparent blur-xl" />
+
+      {/* =====================================================
+          TOP BRAND & CENTER NAVIGATION
       ===================================================== */}
 
       <motion.div
@@ -256,7 +424,7 @@ export default function Signup() {
         transition={{
           duration: 0.7,
         }}
-        className="absolute left-6 right-6 top-6 z-20 flex items-center justify-between sm:left-10 sm:right-10 sm:top-8"
+        className="absolute left-6 right-6 top-6 z-50 flex items-center justify-between pointer-events-auto sm:left-10 sm:right-10 sm:top-8"
       >
         <Link
           to="/"
@@ -286,7 +454,7 @@ export default function Signup() {
         </Link>
 
         {/* TOP CENTER NAVIGATION LINKS */}
-        <nav className="hidden md:flex items-center gap-8 rounded-full border border-white/10 bg-[#07101f]/90 px-8 py-3.5 backdrop-blur-2xl shadow-2xl absolute left-1/2 -translate-x-1/2">
+        <nav className="absolute left-1/2 hidden -translate-x-1/2 items-center gap-8 rounded-full border border-white/10 bg-[#07101f]/90 px-8 py-3.5 shadow-2xl backdrop-blur-2xl md:flex">
           <Link to="/" className="text-sm font-semibold text-slate-200 hover:text-cyan-400 transition">Home</Link>
           <Link to="/features" className="text-sm font-semibold text-slate-200 hover:text-cyan-400 transition">Features</Link>
           <Link to="/about" className="text-sm font-semibold text-slate-200 hover:text-cyan-400 transition">About Us</Link>
@@ -397,12 +565,12 @@ export default function Signup() {
           MAIN CONTENT
       ===================================================== */}
 
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 pb-24 pt-28 sm:px-6 lg:justify-end lg:px-[9%]">
+      <main className="relative z-20 flex h-full items-center justify-center px-4 sm:px-6 lg:justify-end lg:px-[9%]">
 
         <motion.div
           initial={{
             opacity: 0,
-            y: 35,
+            y: 25,
             scale: 0.97,
           }}
           animate={{
@@ -414,7 +582,7 @@ export default function Signup() {
             duration: 0.8,
             ease: 'easeOut',
           }}
-          className="relative w-full max-w-xl"
+          className="relative w-full max-w-md"
         >
 
           {/* =================================================
@@ -445,76 +613,31 @@ export default function Signup() {
                 CARD CONTENT
             ================================================== */}
 
-            <div className="relative p-6 sm:p-9">
+            <div className="relative p-5 sm:p-6">
 
               {/* =================================================
                   HEADER
               ================================================== */}
 
-              <div className="mb-7">
+              <div className="mb-3">
 
-                <div className="flex items-start justify-between gap-4">
+                <div className="mb-1.5 flex items-center gap-2">
 
-                  <div>
+                  <span className="h-1.5 w-8 rounded-full bg-cyan-400" />
 
-                    {/* Accent bars */}
+                  <span className="h-1.5 w-3 rounded-full bg-blue-500" />
 
-                    <div className="mb-3 flex items-center gap-2">
-
-                      <span className="h-1.5 w-8 rounded-full bg-cyan-400" />
-
-                      <span className="h-1.5 w-3 rounded-full bg-blue-500" />
-
-                      <span className="h-1.5 w-2 rounded-full bg-violet-500" />
-
-                    </div>
-
-                    <h2 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-                      Create your account
-                    </h2>
-
-                    <p className="mt-2 text-xs leading-5 text-slate-400 sm:text-sm">
-                      Start managing your transport operations with Buddy
-                      Fleets.
-                    </p>
-
-                  </div>
-
-                  {/* BF */}
-
-                  <div className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/20 bg-gradient-to-br from-cyan-400/10 to-violet-500/10 text-sm font-black text-cyan-300 sm:flex">
-                    BF
-                  </div>
+                  <span className="h-1.5 w-2 rounded-full bg-violet-500" />
 
                 </div>
 
-                {/* =================================================
-                    FREE DEMO NOTICE
-                ================================================== */}
+                <h2 className="text-xl font-black tracking-tight text-white sm:text-2xl">
+                  Create your account
+                </h2>
 
-                <div className="mt-5 flex items-center gap-3 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.04] px-4 py-3">
-
-                  <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10">
-
-                    <span className="absolute h-2 w-2 animate-ping rounded-full bg-cyan-400/70" />
-
-                    <span className="relative h-2 w-2 rounded-full bg-cyan-400" />
-
-                  </div>
-
-                  <div>
-
-                    <p className="text-xs font-bold text-cyan-300">
-                      5-Day Free Demo
-                    </p>
-
-                    <p className="text-[10px] text-slate-500">
-                      No long-term commitment. Explore the platform first.
-                    </p>
-
-                  </div>
-
-                </div>
+                <p className="mt-0.5 text-[11px] leading-4 text-slate-400">
+                  Start managing transport operations with 5-day free demo.
+                </p>
 
               </div>
 
@@ -527,14 +650,14 @@ export default function Signup() {
                 <form
                   onSubmit={handleRegister}
                   noValidate
-                  className="space-y-4"
+                  className="space-y-2.5"
                 >
 
                   {/* =================================================
                       COMPANY + NAME
                   ================================================== */}
 
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 
                     {/* Company */}
 
@@ -542,7 +665,7 @@ export default function Signup() {
 
                       <label
                         htmlFor="companyName"
-                        className="mb-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
+                        className="mb-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
                       >
                         Company Name
                       </label>
@@ -553,7 +676,7 @@ export default function Signup() {
                         name="companyName"
                         required
                         autoComplete="organization"
-                        placeholder="Enter company name"
+                        placeholder="Company name"
                         value={formData.companyName}
                         onChange={handleChange}
                         className={inputBase}
@@ -567,7 +690,7 @@ export default function Signup() {
 
                       <label
                         htmlFor="yourName"
-                        className="mb-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
+                        className="mb-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
                       >
                         Your Name
                       </label>
@@ -578,7 +701,7 @@ export default function Signup() {
                         name="yourName"
                         required
                         autoComplete="name"
-                        placeholder="Enter full name"
+                        placeholder="Full name"
                         value={formData.yourName}
                         onChange={handleChange}
                         className={inputBase}
@@ -596,14 +719,14 @@ export default function Signup() {
 
                     <label
                       htmlFor="email"
-                      className="mb-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
+                      className="mb-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
                     >
                       Email Address
                     </label>
 
                     <div className="relative">
 
-                      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+                      <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-cyan-400/60">
                         @
                       </span>
 
@@ -616,7 +739,7 @@ export default function Signup() {
                         placeholder="name@company.com"
                         value={formData.email}
                         onChange={handleChange}
-                        className={`${inputBase} pl-10`}
+                        className={`${inputBase} pl-9`}
                       />
 
                     </div>
@@ -631,7 +754,7 @@ export default function Signup() {
 
                     <label
                       htmlFor="mobile"
-                      className="mb-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
+                      className="mb-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
                     >
                       Mobile Number
                     </label>
@@ -651,29 +774,11 @@ export default function Signup() {
                         inputMode="numeric"
                         maxLength={10}
                         pattern="[0-9]{10}"
-                        placeholder="10-digit mobile number"
+                        placeholder="10-digit mobile"
                         value={formData.mobile}
                         onChange={handleChange}
                         className={`${inputBase} pl-14`}
                       />
-
-                    </div>
-
-                    <div className="mt-1.5 flex items-center justify-between">
-
-                      <p className="text-[9px] text-slate-600">
-                        Enter a valid 10-digit Indian mobile number.
-                      </p>
-
-                      <span
-                        className={`text-[9px] ${
-                          formData.mobile.length === 10
-                            ? 'text-cyan-400'
-                            : 'text-slate-600'
-                        }`}
-                      >
-                        {formData.mobile.length}/10
-                      </span>
 
                     </div>
 
@@ -687,7 +792,7 @@ export default function Signup() {
 
                     <label
                       htmlFor="password"
-                      className="mb-2 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
+                      className="mb-1 block text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400"
                     >
                       Password
                     </label>
@@ -701,7 +806,7 @@ export default function Signup() {
                         required
                         autoComplete="new-password"
                         maxLength={8}
-                        placeholder="Create a secure password"
+                        placeholder="Secure password"
                         value={formData.password}
                         onChange={handleChange}
                         className={`${inputBase} pr-20`}
@@ -728,7 +833,7 @@ export default function Signup() {
                         PASSWORD CRITERIA
                     ================================================== */}
 
-                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px]">
 
                       <span
                         className={
@@ -799,7 +904,7 @@ export default function Signup() {
                         opacity: 1,
                         y: 0,
                       }}
-                      className="rounded-xl border border-red-400/20 bg-red-400/[0.06] px-4 py-3"
+                      className="rounded-xl border border-red-400/20 bg-red-400/[0.06] px-3 py-2"
                       role="alert"
                     >
 
@@ -809,7 +914,7 @@ export default function Signup() {
                           !
                         </span>
 
-                        <p className="text-[10px] leading-5 text-red-300">
+                        <p className="text-[10px] leading-4 text-red-300">
                           {error}
                         </p>
 
@@ -823,11 +928,11 @@ export default function Signup() {
                       TERMS CHECKBOX
                   ================================================== */}
 
-                  <div className="pt-1">
+                  <div className="pt-0.5">
 
                     <label
                       htmlFor="terms"
-                      className="group flex cursor-pointer items-start gap-3 select-none"
+                      className="group flex cursor-pointer items-start gap-2.5 select-none"
                     >
 
                       {/* Real checkbox */}
@@ -849,16 +954,16 @@ export default function Signup() {
                         className="
                           mt-0.5
                           flex
-                          h-5
-                          w-5
+                          h-4
+                          w-4
                           shrink-0
                           items-center
                           justify-center
-                          rounded-md
+                          rounded
                           border
                           border-white/15
                           bg-white/[0.03]
-                          text-[11px]
+                          text-[10px]
                           font-black
                           text-transparent
                           transition-all
@@ -867,8 +972,6 @@ export default function Signup() {
                           peer-checked:border-cyan-400
                           peer-checked:bg-cyan-400
                           peer-checked:text-slate-950
-                          peer-focus-visible:ring-4
-                          peer-focus-visible:ring-cyan-400/20
                         "
                       >
                         ✓
@@ -876,12 +979,8 @@ export default function Signup() {
 
                       {/* Terms text */}
 
-                      <span className="text-[10px] leading-5 text-slate-500 transition-colors duration-200 group-hover:text-slate-400">
-
-                        By creating an account, you agree to use
-                        Buddy Fleets responsibly and provide accurate
-                        business information.
-
+                      <span className="text-[10px] leading-3.5 text-slate-500 transition-colors duration-200 group-hover:text-slate-400">
+                        I agree to use Buddy Fleets responsibly and provide accurate business info.
                       </span>
 
                     </label>
@@ -903,7 +1002,7 @@ export default function Signup() {
                     className="
                       group
                       relative
-                      mt-2
+                      mt-1
                       w-full
                       overflow-hidden
                       rounded-2xl
@@ -911,8 +1010,8 @@ export default function Signup() {
                       from-cyan-400
                       via-blue-500
                       to-violet-600
-                      px-5
-                      py-4
+                      px-4
+                      py-3
                       text-sm
                       font-black
                       text-white
@@ -965,7 +1064,7 @@ export default function Signup() {
                   transition={{
                     duration: 0.6,
                   }}
-                  className="py-8 text-center"
+                  className="py-4 text-center"
                 >
 
                   {/* Success icon */}
@@ -982,58 +1081,26 @@ export default function Signup() {
                       stiffness: 180,
                       delay: 0.15,
                     }}
-                    className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-emerald-400/30 bg-emerald-400/10 text-3xl text-emerald-300 shadow-lg shadow-emerald-500/10"
+                    className="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-emerald-400/30 bg-emerald-400/10 text-xl text-emerald-300 shadow-lg shadow-emerald-500/10"
                   >
                     ✓
                   </motion.div>
 
                   {/* Heading */}
 
-                  <h3 className="mt-6 text-2xl font-black text-white">
+                  <h3 className="mt-4 text-xl font-black text-white">
                     Check Your Email
                   </h3>
 
                   {/* Message */}
 
-                  <p className="mx-auto mt-3 max-w-md text-sm leading-7 text-slate-400">
-
+                  <p className="mt-2 text-xs leading-5 text-slate-300">
                     We have sent a confirmation link to{' '}
-
                     <span className="font-semibold text-cyan-300">
                       {formData.email}
                     </span>
-
-                    . Click the link inside the email to verify your
-                    account and receive your Company ID.
-
+                    . Click the link inside the email to verify your account.
                   </p>
-
-                  {/* Verification box */}
-
-                  <div className="mx-auto mt-6 max-w-sm rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.03] px-4 py-3 text-left">
-
-                    <div className="flex gap-3">
-
-                      <span className="mt-0.5 text-cyan-300">
-                        ✓
-                      </span>
-
-                      <div>
-
-                        <p className="text-xs font-bold text-slate-200">
-                          Verification required
-                        </p>
-
-                        <p className="mt-1 text-[10px] leading-5 text-slate-500">
-                          Open your inbox and complete the verification
-                          before logging into your new company account.
-                        </p>
-
-                      </div>
-
-                    </div>
-
-                  </div>
 
                   {/* Login button */}
 
@@ -1047,23 +1114,21 @@ export default function Signup() {
                     type="button"
                     onClick={() => navigate('/login')}
                     className="
-                      mt-7
+                      mt-5
+                      w-full
                       rounded-2xl
-                      border
-                      border-white/10
-                      bg-white/[0.05]
-                      px-7
+                      bg-gradient-to-r
+                      from-cyan-400
+                      via-blue-500
+                      to-violet-600
+                      px-6
                       py-3
                       text-xs
-                      font-bold
-                      text-slate-200
+                      font-black
+                      text-white
+                      shadow-xl
+                      shadow-blue-600/20
                       transition-all
-                      duration-300
-                      hover:border-cyan-400/20
-                      hover:bg-white/[0.08]
-                      focus:outline-none
-                      focus:ring-4
-                      focus:ring-cyan-400/20
                     "
                   >
                     Go to Login →
@@ -1077,7 +1142,7 @@ export default function Signup() {
                   LOGIN REDIRECT
               ================================================== */}
 
-              <div className="mt-7 border-t border-white/[0.07] pt-5 text-center">
+              <div className="mt-3 border-t border-white/[0.07] pt-2.5 text-center">
 
                 <p className="text-xs text-slate-500">
 
@@ -1100,25 +1165,13 @@ export default function Signup() {
 
         </motion.div>
 
-      </div>
+      </main>
 
       {/* =====================================================
           FOOTER
       ===================================================== */}
 
-      <motion.div
-        initial={{
-          opacity: 0,
-        }}
-        animate={{
-          opacity: 1,
-        }}
-        transition={{
-          duration: 1,
-          delay: 1,
-        }}
-        className="relative z-20 px-4 pb-5 text-center lg:absolute lg:bottom-4 lg:left-0 lg:right-0 lg:pb-0"
-      >
+      <div className="absolute bottom-2 left-0 right-0 z-20 text-center">
 
         <p className="text-[10px] text-slate-600">
 
@@ -1132,26 +1185,9 @@ export default function Signup() {
 
         </p>
 
-        <p className="mt-1 text-[9px] uppercase tracking-[0.25em] text-slate-700">
+      </div>
 
-          Designed by{' '}
-
-          <a
-            href="https://www.instagram.com/happiest_banda"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-cyan-400/70 transition-colors hover:text-cyan-300"
-          >
-            Shubham Jangir
-          </a>
-
-        </p>
-
-      </motion.div>
-
-      {/* =====================================================
-          MOBILE BOTTOM GLOW
-      ===================================================== */}
+      {/* MOBILE BOTTOM GLOW */}
 
       <div className="pointer-events-none absolute bottom-0 left-1/2 z-[1] h-40 w-[80%] -translate-x-1/2 rounded-full bg-cyan-500/10 blur-[100px] xl:hidden" />
 

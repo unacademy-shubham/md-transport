@@ -11,6 +11,7 @@ import ContactUs from './pages/Website/ContactUs';
 
 import Login from './pages/Auth/Login';
 import Signup from './pages/Auth/Signup';
+import ForgotID from './pages/Auth/ForgotID';
 
 import SuperAdminDashboard from './pages/Dashboard/SuperAdminDashboard';
 
@@ -243,6 +244,17 @@ export default function App() {
           element={
             !currentUser ? (
               <Signup onSignupSuccess={handleLoginSuccess} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          } 
+        />
+
+        <Route 
+          path="/forgot-id" 
+          element={
+            !currentUser ? (
+              <ForgotID />
             ) : (
               <Navigate to="/dashboard" replace />
             )
