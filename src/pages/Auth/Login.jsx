@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, KeyRound, Truck, ShieldAlert } from 'lucide-react';
-import { supabase } from '../supabaseClient';
+import { supabase } from "../../supabaseClient";
 
 export default function Login({ onLoginSuccess }) {
   const [username, setUsername] = useState('');

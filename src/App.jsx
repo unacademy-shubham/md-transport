@@ -1,11 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
-import Login from './pages/Login';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { supabase } from './supabaseClient';
+
+// --- IMPORTS ACCORDING TO YOUR EXACT FOLDER STRUCTURE ---
+import WebsiteLayout from './layouts/WebsiteLayout';
+import Home from './pages/Website/Home';
+import Features from './pages/Website/Features';
+import AboutUs from './pages/Website/AboutUs';
+import ContactUs from './pages/Website/ContactUs';
+
+import Login from './pages/Auth/Login';
+import Signup from './pages/Auth/Signup';
+
+import SuperAdminDashboard from './pages/Dashboard/SuperAdminDashboard';
 
 const SESSION_KEY = 'buddy_fleets_session';
 const ACTIVE_TAB_KEY = 'buddy_fleets_active_tab';
 const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 Minutes
+
+// --- SCROLL TO TOP HELPER ---
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+}
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -191,17 +211,63 @@ export default function App() {
     );
   }
 
-  // View 1: Not Authenticated (Directly renders Login Screen)
-  if (!currentUser) {
-    return <Login onLoginSuccess={handleLoginSuccess} />;
-  }
-
-  // View 2: Authenticated Console
+  // ==========================================
+  // FINAL ROUTING STRUCTURE FOR SAAS PLATFORM
+  // ==========================================
   return (
-    <SuperAdminDashboard
-      currentUser={currentUser}
-      onLogout={() => handleLogout(false)}
-      onUserUpdate={handleUserUpdate}
-    />
+    <BrowserRouter>
+      <ScrollToTop />
+      <Routes>
+        {/* PUBLIC WEBSITE ROUTES (Wrapped with WebsiteLayout: Navbar + Footer) */}
+        <Route element={<WebsiteLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/features" element={<Features />} />
+          <Route path="/about" element={<AboutUs />} />
+          <Route path="/contact" element={<ContactUs />} />
+        </Route>
+
+        {/* AUTHENTICATION & TRIAL REGISTRATION ROUTES (Standalone screens) */}
+        <Route 
+          path="/login" 
+          element={
+            !currentUser ? (
+              <Login onLoginSuccess={handleLoginSuccess} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          } 
+        />
+        
+        <Route 
+          path="/signup" 
+          element={
+            !currentUser ? (
+              <Signup onSignupSuccess={handleLoginSuccess} />
+            ) : (
+              <Navigate to="/dashboard" replace />
+            )
+          } 
+        />
+
+        {/* PROTECTED SAAS DASHBOARD ROUTE */}
+        <Route 
+          path="/dashboard" 
+          element={
+            currentUser ? (
+              <SuperAdminDashboard
+                currentUser={currentUser}
+                onLogout={() => handleLogout(false)}
+                onUserUpdate={handleUserUpdate}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          } 
+        />
+
+        {/* CATCH-ALL ROUTE (Redirects unknown links back to home) */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </BrowserRouter>
   );
 }

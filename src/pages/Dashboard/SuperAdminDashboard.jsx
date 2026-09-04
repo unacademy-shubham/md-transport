@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { supabase } from '../../supabaseClient';
 import * as XLSX from 'xlsx';
 import {
   LayoutDashboard,
@@ -37,7 +37,7 @@ import {
   FileSpreadsheet,
   PhoneCall
 } from 'lucide-react';
-import { INDIAN_STATES, INDIA_STATES_DISTRICTS, fetchLocationByPincode } from '../utils/indiaGeoData';
+import { INDIAN_STATES, INDIA_STATES_DISTRICTS, fetchLocationByPincode } from '../../utils/indiaGeoData';
 
 const USER_ROLES = [
   { value: 'DIRECTOR', label: 'Director (Admin)' },
